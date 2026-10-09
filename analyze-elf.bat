@@ -16,3 +16,4 @@ if errorlevel 1 (
 py tools\analyze_elf.py "%~1" --out reports
 echo.
 pause
+ 
