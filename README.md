@@ -1,10 +1,10 @@
-# Dirge of Cerberus PS2 — ELF Analysis Starter
+# Dirge of Cerberus PS2 
 
 Research workspace for **Dirge of Cerberus: Final Fantasy VII International — Ultimate Hits**, target label supplied as `SLPM-66629`.
 
 ## Analysis of the uploaded ELF
 
-The uploaded file was inspected locally. Its SHA-256 is:
+SHA-256 is:
 
 `d715531d0713700ae1c7f9133cf98ee106d600c0a702f07c2f88705faf866d99`
 
@@ -60,6 +60,6 @@ Read `docs/jal-triage.md` before using the heuristic CSV.
 - `docs/` — findings, tool references, Windows instructions
 - `src/` — place only code you authored or may legally redistribute
 
-## Copyright and safety
+## Copyright 
 
-This ZIP intentionally excludes the uploaded ELF, game data, BIOS files, and third-party tool binaries. Keep proprietary game files outside the Git repository. Review the license of every external tool before redistributing it.
+Review the license of every external tool before redistributing it.
