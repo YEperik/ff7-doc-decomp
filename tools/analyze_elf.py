@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Inspect a PS2 ELF32 little-endian executable and triage JAL opcode candidates."""
 import argparse
 import csv
 import hashlib
