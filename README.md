@@ -60,6 +60,6 @@ Read `docs/jal-triage.md` before using the heuristic CSV.
 - `docs/` — findings, tool references, Windows instructions
 - `src/` — place only code you authored or may legally redistribute
 
-## Copyright 
+## License
 
 Review the license of every external tool before redistributing it.
