@@ -1,0 +1,1 @@
+Keep one Markdown file per analysis session. Record date, ELF hash, Ghidra/extension version, address, raw bytes, surrounding instructions, references, and confidence. Avoid copying proprietary game assets into the repository.

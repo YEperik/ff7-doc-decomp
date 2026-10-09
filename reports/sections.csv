@@ -1,0 +1,41 @@
+index,name,type,flags,addr,offset,size,link,info,align,entsize,jal_opcode_candidates,targets_outside_executable_load_segments,scan_note
+0,,0,0,0,0,0,0,0,0,0,,,not a file-backed executable section
+1,.text,1,6,1048576,256,3541268,0,0,256,0,34454,2500,heuristic 32-bit word scan; not proof every candidate is code
+2,.vutext,1,6,4589856,3541536,43248,0,0,16,0,5,4,heuristic 32-bit word scan; not proof every candidate is code
+3,.reginfo,1879048198,0,0,4723696,24,0,0,4,1,,,not a file-backed executable section
+4,.DVP.ovlytab,2147480608,1,0,4723720,216,5,0,4,12,,,not a file-backed executable section
+5,.DVP.ovlystrtab,3,0,0,4723936,655,0,0,1,0,,,not a file-backed executable section
+6,.DVP.overlay..0x0.2301983315.15.0,2147480609,5,0,4724591,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+7,.DVP.overlay..0x800.2301983315.290.1,2147480609,5,0,4726639,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+8,.DVP.overlay..0x1000.2301983315.580.2,2147480609,5,0,4728687,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+9,.DVP.overlay..0x1800.2301983315.865.3,2147480609,5,0,4730735,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+10,.DVP.overlay..0x2000.2301983315.1157.4,2147480609,5,0,4732783,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+11,.DVP.overlay..0x2800.2301983315.1457.5,2147480609,5,0,4734831,1568,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+12,.DVP.overlay..0x0.639103123.14.0,2147480609,5,0,4736399,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+13,.DVP.overlay..0x800.639103123.87.1,2147480609,5,0,4738447,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+14,.DVP.overlay..0x1000.639103123.236.2,2147480609,5,0,4740495,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+15,.DVP.overlay..0x1800.639103123.143.3,2147480609,5,0,4742543,1264,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+16,.DVP.overlay..0x0.308099523.28.0,2147480609,5,0,4743807,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+17,.DVP.overlay..0x800.308099523.213.1,2147480609,5,0,4745855,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+18,.DVP.overlay..0x1000.308099523.204.2,2147480609,5,0,4747903,40,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+19,.DVP.overlay..0x0.308100547.11.0,2147480609,5,0,4747943,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+20,.DVP.overlay..0x800.308100547.77.1,2147480609,5,0,4749991,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+21,.DVP.overlay..0x1000.308100547.82.2,2147480609,5,0,4752039,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+22,.DVP.overlay..0x1800.308100547.289.3,2147480609,5,0,4754087,2048,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+23,.DVP.overlay..0x2000.308100547.602.4,2147480609,5,0,4756135,1880,0,0,1,0,,,skipped: section has no virtual address (overlay may be runtime-mapped)
+24,.mdebug.eabi64,1,0,4633104,4758015,0,0,0,1,0,,,not a file-backed executable section
+25,.data,1,3,4633216,3584896,184064,0,0,64,0,,,not a file-backed executable section
+26,.vudata,1,3,4817280,3768960,0,0,0,1,0,,,not a file-backed executable section
+27,.rodata,1,2,4817280,3768960,105264,0,0,16,0,,,not a file-backed executable section
+28,.bss,8,3,4922624,3874304,380864,0,0,64,0,,,not a file-backed executable section
+29,.vubss,8,3,5303488,3874304,0,0,0,1,0,,,not a file-backed executable section
+30,.end_of_bss,8,2,5303552,3874368,0,0,0,1,0,,,not a file-backed executable section
+31,.kel_sound_section,8,3,5304064,3874880,38532,0,0,64,0,,,not a file-backed executable section
+32,.kel_us_overwrap_extended_program_section,1,7,5342656,3874940,31168,0,0,16,0,225,52,heuristic 32-bit word scan; not proof every candidate is code
+33,.kel_extended_program_section,1,6,5408640,3906112,518016,0,0,16,0,8476,0,heuristic 32-bit word scan; not proof every candidate is code
+34,.kel_draw_section,1,7,5926656,4424128,53040,0,0,16,0,615,0,heuristic 32-bit word scan; not proof every candidate is code
+35,.kel_debugmenu,8,2,7864320,4477168,0,0,0,1,0,,,not a file-backed executable section
+36,.kel_commandline,1,6,7864320,4477168,0,0,0,4,0,,,not a file-backed executable section
+37,.kel_title,1,7,11141120,4477168,34304,0,0,16,0,615,60,heuristic 32-bit word scan; not proof every candidate is code
+38,.kel_net,1,7,12320512,4511472,212224,0,0,16,0,2993,0,heuristic 32-bit word scan; not proof every candidate is code
+39,.shstrtab,3,0,0,4758015,952,0,0,1,0,,,not a file-backed executable section

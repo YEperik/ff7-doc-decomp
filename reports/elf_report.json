@@ -1,0 +1,34 @@
+{
+  "file_name": "SLPM_666.29",
+  "file_size": 4760568,
+  "sha256": "d715531d0713700ae1c7f9133cf98ee106d600c0a702f07c2f88705faf866d99",
+  "elf_class": "ELF32",
+  "endianness": "little-endian",
+  "elf_type": "EXEC",
+  "machine_number": 8,
+  "machine_label": "MIPS",
+  "entry_point": "0x00100000",
+  "elf_flags": "0x20924001",
+  "program_header_count": 5,
+  "section_header_count": 40,
+  "executable_load_ranges": [
+    {
+      "start": "0x00100000",
+      "end_exclusive": "0x0051FF80"
+    },
+    {
+      "start": "0x00528780",
+      "end_exclusive": "0x005B3E30"
+    },
+    {
+      "start": "0x00AA0000",
+      "end_exclusive": "0x00AA8600"
+    },
+    {
+      "start": "0x00BBFF00",
+      "end_exclusive": "0x00BF3C00"
+    }
+  ],
+  "jal_opcode_candidate_count": 47383,
+  "warning": "JAL scan is heuristic. It may include data interpreted as instructions and cannot resolve runtime overlays or prove a bad instruction."
+}
