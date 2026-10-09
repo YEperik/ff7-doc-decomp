@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Calculate SHA-256 for any file."""
 import argparse
 import hashlib
 from pathlib import Path
