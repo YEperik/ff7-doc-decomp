@@ -52,14 +52,6 @@ Import the ELF into Ghidra with the PS2 Emotion Engine language supplied by **Gh
 
 Read `docs/jal-triage.md` before using the heuristic CSV.
 
-## Layout
-
-- `tools/` — local analysis helpers (Python standard library only)
-- `ghidra_scripts/` — script to export JAL call candidates from a Ghidra program
-- `reports/` — place reports generated locally; the uploaded game ELF is not included
-- `docs/` — findings, tool references, Windows instructions
-- `src/` — place only code you authored or may legally redistribute
-
 ## License
 
 Review the license of every external tool before redistributing it.
