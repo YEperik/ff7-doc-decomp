@@ -1,4 +1,4 @@
-# Ghidra Jython script: export JAL instructions and their outgoing references to CSV.
+# Ghidra Jython script: export JAL instructions and their outgoing references to CSV. 
 # Run inside Ghidra after importing/analyzing the ELF with the PS2 Emotion Engine language.
 # This is a triage aid, not an automatic patcher.
 from java.io import FileWriter, BufferedWriter
