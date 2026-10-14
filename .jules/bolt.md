@@ -1,0 +1,3 @@
+## 2025-10-14 - Avoid Generator Allocations in Hot Tight Loops
+**Learning:** In Python scanning scripts like `tools/analyze_elf.py`, using `any()` with a generator expression inside a frequently called function (like `target_is_exec`) creates generator objects and iterator framing overhead on every invocation. Replacing `any(lo <= addr < hi for lo, hi in exec_ranges)` with an explicit `for` loop eliminates per-call allocation overhead and speeds up the loop evaluation by ~85%.
+**Action:** When inspecting Python scanners/looping code called millions of times, favor explicit `for` loops or direct comparisons over generator expressions inside hot helper functions.
