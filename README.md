@@ -46,12 +46,6 @@ py tools\analyze_elf.py "D:\path\to\SLPM_666.29" --out reports
 This produces `reports/elf_report.json`, `reports/sections.csv`, and `reports/jal_candidates.csv`.
 You can drag an ELF onto `analyze-elf.bat` for a quick report.
 
-## Recommended next step for the reported “Bad instruction (JAL)” issue
-
-Import the ELF into Ghidra with the PS2 Emotion Engine language supplied by **Ghidra Emotion Engine: Reloaded**. The generic ELF machine field can be misleading for a PS2 Emotion Engine file; the ELF flags include a 5900 marker. Do not patch `JAL` words merely because a tool labels them bad. First determine whether the selected processor language, load address, delay slots, overlay mapping, and code/data boundaries are correct.
-
-Read `docs/jal-triage.md` before using the heuristic CSV.
-
 ## License
 
 Review the license of every external tool before redistributing it.
