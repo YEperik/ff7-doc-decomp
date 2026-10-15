@@ -93,13 +93,18 @@ def main():
                 if p_type == PT_LOAD and p_flags & PF_X and memsz:
                     exec_ranges.append((vaddr, vaddr + memsz))
 
+            # Direct loop range check avoids generator allocations on every candidate check
             def target_is_exec(addr):
-                return any(lo <= addr < hi for lo, hi in exec_ranges)
+                for lo, hi in exec_ranges:
+                    if lo <= addr < hi:
+                        return True
+                return False
 
             section_rows, total, outside_total = [], 0, 0
             part_no, part_count, writer, out_handle = 0, 0, None, None
             cols = ["section", "virtual_address", "file_offset", "opcode", "word", "static_target",
                     "target_in_executable_load_segment", "scan_note"]
+            SCAN_NOTE = "heuristic word scan; inspect in Ghidra"
 
             def open_part():
                 nonlocal part_no, part_count, writer, out_handle
@@ -108,8 +113,8 @@ def main():
                 part_no += 1
                 name = "jal_candidates.csv" if args.chunk_rows == 0 else "jal_candidates_%03d.csv" % part_no
                 out_handle = (args.out / name).open("w", newline="", encoding="utf-8")
-                writer = csv.DictWriter(out_handle, fieldnames=cols)
-                writer.writeheader()
+                writer = csv.writer(out_handle)
+                writer.writerow(cols)
                 part_count = 0
 
             def emit(row):
@@ -136,31 +141,43 @@ def main():
                     else:
                         # Align by virtual address, not by file offset.
                         delta = (-addr) % 4
-                        for rel in range(delta, secsize - 3, 4):
-                            word = struct.unpack_from("<I", data, off + rel)[0]
-                            opcode = word >> 26
-                            is_jal = opcode == 3
-                            is_jalr = args.include_jalr and opcode == 0 and ((word >> 21) & 31) != 0 and ((word >> 11) & 31) == 31 and ((word >> 6) & 31) == 0 and (word & 63) == 9
-                            if not (is_jal or is_jalr):
-                                continue
-                            pc = addr + rel
-                            target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
-                            mapped = target_is_exec(target) if is_jal else False
-                            count += 1
-                            total += 1
-                            if is_jal and not mapped:
-                                outside += 1
-                                outside_total += 1
-                            emit({"section": s["name"], "virtual_address": "0x%08X" % pc,
-                                  "file_offset": "0x%08X" % (off + rel),
-                                  "opcode": "JAL" if is_jal else "JALR",
-                                  "word": "0x%08X" % word,
-                                  "static_target": ("0x%08X" % target) if is_jal else "indirect",
-                                  "target_in_executable_load_segment": ("yes" if mapped else "no") if is_jal else "unknown",
-                                  "scan_note": "heuristic word scan; inspect in Ghidra"})
-                            if args.max_candidates and total >= args.max_candidates:
-                                note = "stopped early at --max-candidates limit"
-                                break
+                        num_words = (secsize - delta) // 4
+                        if num_words <= 0:
+                            section_rows.append({**s, "jal_opcode_candidates": 0,
+                                                 "targets_outside_executable_load_segments": 0,
+                                                 "scan_note": "no complete 4-byte aligned words in section"})
+                            print("[%d/%d] %-48s candidates=0" % (si + 1, len(info["sections"]), s["name"][:48]))
+                            continue
+                        end_rel = delta + num_words * 4
+                        # Optimize: unpack words in C via struct.iter_unpack over memoryview slice
+                        sec_bytes = memoryview(data)[off + delta : off + end_rel]
+                        try:
+                            for idx, (word,) in enumerate(struct.iter_unpack("<I", sec_bytes)):
+                                opcode = word >> 26
+                                is_jal = opcode == 3
+                                is_jalr = args.include_jalr and opcode == 0 and ((word >> 21) & 31) != 0 and ((word >> 11) & 31) == 31 and ((word >> 6) & 31) == 0 and (word & 63) == 9
+                                if not (is_jal or is_jalr):
+                                    continue
+                                rel = delta + idx * 4
+                                pc = addr + rel
+                                target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
+                                mapped = target_is_exec(target) if is_jal else False
+                                count += 1
+                                total += 1
+                                if is_jal and not mapped:
+                                    outside += 1
+                                    outside_total += 1
+                                # Optimize: pass ordered list directly to csv.writer to avoid dict allocations
+                                emit([s["name"], "0x%08X" % pc, "0x%08X" % (off + rel),
+                                      "JAL" if is_jal else "JALR", "0x%08X" % word,
+                                      ("0x%08X" % target) if is_jal else "indirect",
+                                      ("yes" if mapped else "no") if is_jal else "unknown",
+                                      SCAN_NOTE])
+                                if args.max_candidates and total >= args.max_candidates:
+                                    note = "stopped early at --max-candidates limit"
+                                    break
+                        finally:
+                            sec_bytes.release()
                     section_rows.append({**s, "jal_opcode_candidates": count,
                                          "targets_outside_executable_load_segments": outside,
                                          "scan_note": note or "heuristic scan; not proof of code/invalid instruction"})
