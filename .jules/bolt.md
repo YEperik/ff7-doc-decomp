@@ -1,0 +1,3 @@
+## 2025-05-18 - Batch unpacking memoryview slices in Python
+**Learning:** In Python opcode or byte-scanner scripts operating over memory-mapped files (`mmap`), iterating word-by-word with `struct.unpack_from('<I', data, offset)` incurs significant per-element function call overhead. Using `memoryview.cast('I')` on little-endian platforms avoids per-word unpacking overhead and yields ~2x speedup. Care must be taken to release memoryviews explicitly when using `mmap` to avoid `BufferError: cannot close exported pointers exist`.
+**Action:** Use `memoryview.cast()` when scanning contiguous primitive types from byte buffers or `mmap` instances, and ensure `.release()` is invoked in a `finally` block before closing the `mmap`.
