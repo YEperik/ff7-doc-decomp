@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+reports/*.csv
+reports/*.json
+!reports/README.md

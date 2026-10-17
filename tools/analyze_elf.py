@@ -15,6 +15,10 @@ from pathlib import Path
 
 PT_LOAD, PF_X, SHF_EXECINSTR, SHT_NOBITS = 1, 1, 0x4, 8
 
+# Chunk size for batch-unpacking 32-bit instructions (256 KB / 64K words)
+CHUNK_WORDS = 65536
+CHUNK_FMT = f"<{CHUNK_WORDS}I"
+
 
 def cstr(buf, off):
     if off < 0 or off >= len(buf):
@@ -60,11 +64,14 @@ def parse_elf(data):
 
 
 def sha256_stream(path):
-    h = hashlib.sha256()
+    # Use hashlib.file_digest if available for optimized C-level file hashing
     with path.open("rb") as f:
+        if hasattr(hashlib, "file_digest"):
+            return hashlib.file_digest(f, "sha256").hexdigest()
+        h = hashlib.sha256()
         for block in iter(lambda: f.read(1024 * 1024), b""):
             h.update(block)
-    return h.hexdigest()
+        return h.hexdigest()
 
 
 def main():
@@ -93,8 +100,12 @@ def main():
                 if p_type == PT_LOAD and p_flags & PF_X and memsz:
                     exec_ranges.append((vaddr, vaddr + memsz))
 
+            # Direct range check avoids generator expression allocation on every candidate check
             def target_is_exec(addr):
-                return any(lo <= addr < hi for lo, hi in exec_ranges)
+                for lo, hi in exec_ranges:
+                    if lo <= addr < hi:
+                        return True
+                return False
 
             section_rows, total, outside_total = [], 0, 0
             part_no, part_count, writer, out_handle = 0, 0, None, None
@@ -108,8 +119,9 @@ def main():
                 part_no += 1
                 name = "jal_candidates.csv" if args.chunk_rows == 0 else "jal_candidates_%03d.csv" % part_no
                 out_handle = (args.out / name).open("w", newline="", encoding="utf-8")
-                writer = csv.DictWriter(out_handle, fieldnames=cols)
-                writer.writeheader()
+                # Fast standard csv.writer using tuples instead of csv.DictWriter dict allocations
+                writer = csv.writer(out_handle)
+                writer.writerow(cols)
                 part_count = 0
 
             def emit(row):
@@ -136,30 +148,48 @@ def main():
                     else:
                         # Align by virtual address, not by file offset.
                         delta = (-addr) % 4
-                        for rel in range(delta, secsize - 3, 4):
-                            word = struct.unpack_from("<I", data, off + rel)[0]
-                            opcode = word >> 26
-                            is_jal = opcode == 3
-                            is_jalr = args.include_jalr and opcode == 0 and ((word >> 21) & 31) != 0 and ((word >> 11) & 31) == 31 and ((word >> 6) & 31) == 0 and (word & 63) == 9
-                            if not (is_jal or is_jalr):
-                                continue
-                            pc = addr + rel
-                            target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
-                            mapped = target_is_exec(target) if is_jal else False
-                            count += 1
-                            total += 1
-                            if is_jal and not mapped:
-                                outside += 1
-                                outside_total += 1
-                            emit({"section": s["name"], "virtual_address": "0x%08X" % pc,
-                                  "file_offset": "0x%08X" % (off + rel),
-                                  "opcode": "JAL" if is_jal else "JALR",
-                                  "word": "0x%08X" % word,
-                                  "static_target": ("0x%08X" % target) if is_jal else "indirect",
-                                  "target_in_executable_load_segment": ("yes" if mapped else "no") if is_jal else "unknown",
-                                  "scan_note": "heuristic word scan; inspect in Ghidra"})
+                        total_words = (secsize - delta) // 4
+                        # Batch unpack words in 64K-word chunks to reduce CPython struct unpacking calls
+                        for i in range(0, total_words, CHUNK_WORDS):
+                            n = min(CHUNK_WORDS, total_words - i)
+                            fmt = CHUNK_FMT if n == CHUNK_WORDS else f"<{n}I"
+                            word_offset = off + delta + i * 4
+                            words = struct.unpack_from(fmt, data, word_offset)
+                            base_rel = delta + i * 4
+
+                            for idx, word in enumerate(words):
+                                opcode = word >> 26
+                                is_jal = opcode == 3
+                                is_jalr = (args.include_jalr and opcode == 0
+                                           and ((word >> 21) & 31) != 0
+                                           and ((word >> 11) & 31) == 31
+                                           and ((word >> 6) & 31) == 0
+                                           and (word & 63) == 9)
+                                if not (is_jal or is_jalr):
+                                    continue
+                                rel = base_rel + idx * 4
+                                pc = addr + rel
+                                target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
+                                mapped = target_is_exec(target) if is_jal else False
+                                count += 1
+                                total += 1
+                                if is_jal and not mapped:
+                                    outside += 1
+                                    outside_total += 1
+                                emit((
+                                    s["name"],
+                                    "0x%08X" % pc,
+                                    "0x%08X" % (off + rel),
+                                    "JAL" if is_jal else "JALR",
+                                    "0x%08X" % word,
+                                    ("0x%08X" % target) if is_jal else "indirect",
+                                    ("yes" if mapped else "no") if is_jal else "unknown",
+                                    "heuristic word scan; inspect in Ghidra",
+                                ))
+                                if args.max_candidates and total >= args.max_candidates:
+                                    note = "stopped early at --max-candidates limit"
+                                    break
                             if args.max_candidates and total >= args.max_candidates:
-                                note = "stopped early at --max-candidates limit"
                                 break
                     section_rows.append({**s, "jal_opcode_candidates": count,
                                          "targets_outside_executable_load_segments": outside,
