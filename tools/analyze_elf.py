@@ -132,6 +132,8 @@ def main():
                 part_count += 1
 
             selected = set(args.section)
+            # Fast local boolean lookup for hot loop
+            include_jalr = args.include_jalr
             try:
                 for si, s in enumerate(info["sections"]):
                     flags, off, secsize, addr = s["flags"], s["offset"], s["size"], s["addr"]
@@ -157,15 +159,21 @@ def main():
                             words = struct.unpack_from(fmt, data, word_offset)
                             base_rel = delta + i * 4
 
+                            # Fast early opcode branch to skip attribute access and complex bitwise evaluation on non-candidate words
                             for idx, word in enumerate(words):
                                 opcode = word >> 26
-                                is_jal = opcode == 3
-                                is_jalr = (args.include_jalr and opcode == 0
-                                           and ((word >> 21) & 31) != 0
-                                           and ((word >> 11) & 31) == 31
-                                           and ((word >> 6) & 31) == 0
-                                           and (word & 63) == 9)
-                                if not (is_jal or is_jalr):
+                                if opcode == 3:
+                                    is_jal = True
+                                    is_jalr = False
+                                elif include_jalr and opcode == 0:
+                                    is_jal = False
+                                    is_jalr = (((word >> 21) & 31) != 0
+                                               and ((word >> 11) & 31) == 31
+                                               and ((word >> 6) & 31) == 0
+                                               and (word & 63) == 9)
+                                    if not is_jalr:
+                                        continue
+                                else:
                                     continue
                                 rel = base_rel + idx * 4
                                 pc = addr + rel
