@@ -15,6 +15,7 @@ def main():
     mnemonic_counts, block_counts, function_counts, flag_counts = Counter(), Counter(), Counter(), Counter()
     total, missing_targets, nonexec_targets, no_function, review_rows = 0, 0, 0, 0, 0
     review_writer = review_file = None
+    review_header = None
     try:
         if not args.no_review_csv:
             args.review_out.parent.mkdir(parents=True, exist_ok=True)
@@ -23,22 +24,70 @@ def main():
             if not path.is_file():
                 raise FileNotFoundError("CSV not found: %s" % path)
             with path.open("r", newline="", encoding="utf-8-sig", errors="replace") as f:
-                reader = csv.DictReader(f)
-                if not reader.fieldnames:
+                # Fast row parsing using standard csv.reader and positional index lookup
+                # to avoid DictReader dict allocations per row and DictWriter dict-to-list mappings.
+                reader = csv.reader(f)
+                try:
+                    header = next(reader)
+                except StopIteration:
                     continue
+                if not header:
+                    continue
+
                 if review_file and review_writer is None:
-                    review_writer = csv.DictWriter(review_file, fieldnames=list(reader.fieldnames) + ["review_reason"], extrasaction="ignore")
-                    review_writer.writeheader()
+                    review_writer = csv.writer(review_file)
+                    review_header = list(header) + ["review_reason"]
+                    review_writer.writerow(review_header)
+
+                mnemonic_idx1 = header.index("mnemonic") if "mnemonic" in header else -1
+                mnemonic_idx2 = header.index("opcode") if "opcode" in header else -1
+
+                block_idx1 = header.index("source_block") if "source_block" in header else -1
+                block_idx2 = header.index("section") if "section" in header else -1
+
+                fn_idx = header.index("function") if "function" in header else -1
+
+                target_idx1 = header.index("flow_targets") if "flow_targets" in header else -1
+                target_idx2 = header.index("static_target") if "static_target" in header else -1
+
+                exec_idx1 = header.index("target_executable") if "target_executable" in header else -1
+                exec_idx2 = header.index("target_in_executable_load_segment") if "target_in_executable_load_segment" in header else -1
+
+                # Map current file column positions to review_header positions to support multi-file inputs with varying schemas
+                col_map = [review_header.index(col) if (review_header and col in review_header) else -1 for col in header] if review_header else []
+                review_base_len = len(review_header) - 1 if review_header else 0
+                is_direct_mapping = (review_header is not None and len(header) == review_base_len and col_map == list(range(review_base_len)))
+
                 for row in reader:
                     total += 1
-                    mnemonic = (row.get("mnemonic") or row.get("opcode") or "<unknown>").strip().upper()
+                    row_len = len(row)
+
+                    mnemonic_raw = row[mnemonic_idx1] if mnemonic_idx1 != -1 and mnemonic_idx1 < row_len else ""
+                    if not mnemonic_raw and mnemonic_idx2 != -1 and mnemonic_idx2 < row_len:
+                        mnemonic_raw = row[mnemonic_idx2]
+                    mnemonic = (mnemonic_raw or "<unknown>").strip().upper()
                     mnemonic_counts[mnemonic] += 1
-                    block = (row.get("source_block") or row.get("section") or "<unknown>").strip()
+
+                    block_raw = row[block_idx1] if block_idx1 != -1 and block_idx1 < row_len else ""
+                    if not block_raw and block_idx2 != -1 and block_idx2 < row_len:
+                        block_raw = row[block_idx2]
+                    block = (block_raw or "<unknown>").strip()
                     block_counts[block] += 1
-                    fn = (row.get("function") or "<no function>").strip()
+
+                    fn_raw = row[fn_idx] if fn_idx != -1 and fn_idx < row_len else ""
+                    fn = (fn_raw or "<no function>").strip()
                     function_counts[fn] += 1
-                    target = (row.get("flow_targets") or row.get("static_target") or "").strip()
-                    executable = (row.get("target_executable") or row.get("target_in_executable_load_segment") or "").strip().lower()
+
+                    target_raw = row[target_idx1] if target_idx1 != -1 and target_idx1 < row_len else ""
+                    if not target_raw and target_idx2 != -1 and target_idx2 < row_len:
+                        target_raw = row[target_idx2]
+                    target = target_raw.strip()
+
+                    exec_raw = row[exec_idx1] if exec_idx1 != -1 and exec_idx1 < row_len else ""
+                    if not exec_raw and exec_idx2 != -1 and exec_idx2 < row_len:
+                        exec_raw = row[exec_idx2]
+                    executable = exec_raw.strip().lower()
+
                     reasons = []
                     if not target or "no resolved" in target.lower() or "indirect" == target.lower():
                         missing_targets += 1
@@ -51,9 +100,25 @@ def main():
                         reasons.append("instruction is not inside a defined function")
                     if reasons:
                         review_rows += 1
-                        flag_counts.update(reasons)
+                        for r in reasons:
+                            flag_counts[r] += 1
                         if review_writer:
-                            review_writer.writerow(dict(row, review_reason="; ".join(reasons)))
+                            reason_str = "; ".join(reasons)
+                            if is_direct_mapping and row_len == review_base_len:
+                                review_writer.writerow(row + [reason_str])
+                            elif is_direct_mapping:
+                                out_row = list(row[:review_base_len])
+                                if len(out_row) < review_base_len:
+                                    out_row.extend([""] * (review_base_len - len(out_row)))
+                                out_row.append(reason_str)
+                                review_writer.writerow(out_row)
+                            else:
+                                out_row = [""] * len(review_header)
+                                for src_i, dest_i in enumerate(col_map):
+                                    if dest_i != -1 and src_i < row_len:
+                                        out_row[dest_i] = row[src_i]
+                                out_row[-1] = reason_str
+                                review_writer.writerow(out_row)
         summary = {"input_files": [str(p) for p in args.csv_files], "rows_processed": total,
                    "mnemonic_counts": dict(mnemonic_counts.most_common()),
                    "rows_by_section_or_block": dict(block_counts.most_common()),
