@@ -58,6 +58,11 @@ def main():
                 review_base_len = len(review_header) - 1 if review_header else 0
                 is_direct_mapping = (review_header is not None and len(header) == review_base_len and col_map == list(range(review_base_len)))
 
+                # Pre-defined reason constants to avoid string allocation in hot loop
+                REASON_TARGET = "target unresolved/indirect"
+                REASON_EXEC = "target not marked executable by this analysis"
+                REASON_FN = "instruction is not inside a defined function"
+
                 for row in reader:
                     total += 1
                     row_len = len(row)
@@ -88,20 +93,27 @@ def main():
                         exec_raw = row[exec_idx2]
                     executable = exec_raw.strip().lower()
 
-                    reasons = []
-                    if not target or "no resolved" in target.lower() or "indirect" == target.lower():
-                        missing_targets += 1
-                        reasons.append("target unresolved/indirect")
-                    if executable in ("false", "no"):
-                        nonexec_targets += 1
-                        reasons.append("target not marked executable by this analysis")
-                    if fn in ("<no function>", ""):
-                        no_function += 1
-                        reasons.append("instruction is not inside a defined function")
-                    if reasons:
+                    target_lower = target.lower()
+                    is_missing = not target or "no resolved" in target_lower or target_lower == "indirect"
+                    is_nonexec = executable in ("false", "no")
+                    is_nofn = fn in ("<no function>", "")
+
+                    if is_missing or is_nonexec or is_nofn:
                         review_rows += 1
-                        for r in reasons:
-                            flag_counts[r] += 1
+                        reasons = []
+                        if is_missing:
+                            missing_targets += 1
+                            flag_counts[REASON_TARGET] += 1
+                            reasons.append(REASON_TARGET)
+                        if is_nonexec:
+                            nonexec_targets += 1
+                            flag_counts[REASON_EXEC] += 1
+                            reasons.append(REASON_EXEC)
+                        if is_nofn:
+                            no_function += 1
+                            flag_counts[REASON_FN] += 1
+                            reasons.append(REASON_FN)
+
                         if review_writer:
                             reason_str = "; ".join(reasons)
                             if is_direct_mapping and row_len == review_base_len:
