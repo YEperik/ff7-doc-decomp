@@ -151,53 +151,58 @@ def main():
                         # Align by virtual address, not by file offset.
                         delta = (-addr) % 4
                         total_words = (secsize - delta) // 4
-                        # Batch unpack words in 64K-word chunks to reduce CPython struct unpacking calls
-                        for i in range(0, total_words, CHUNK_WORDS):
-                            n = min(CHUNK_WORDS, total_words - i)
-                            fmt = CHUNK_FMT if n == CHUNK_WORDS else f"<{n}I"
-                            word_offset = off + delta + i * 4
-                            words = struct.unpack_from(fmt, data, word_offset)
-                            base_rel = delta + i * 4
+                        sec_start = off + delta
+                        sec_end = sec_start + total_words * 4
+                        # Byte-3 pre-filter: in little-endian MIPS 32-bit instructions,
+                        # byte 3 contains opcode in bits [7:2].
+                        # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
+                        # Opcode 0 (SPECIAL / JALR candidate) has byte 3 in 0..3 (0x00..0x03).
+                        # Slicing byte 3 across the section bypasses unpacking ~95%+ non-candidate words.
+                        byte3_slice = data[sec_start + 3:sec_end:4]
+                        for idx, b in enumerate(byte3_slice):
+                            if 12 <= b <= 15:
+                                pass
+                            elif include_jalr and 0 <= b <= 3:
+                                pass
+                            else:
+                                continue
 
-                            # Fast early opcode branch to skip attribute access and complex bitwise evaluation on non-candidate words
-                            for idx, word in enumerate(words):
-                                opcode = word >> 26
-                                if opcode == 3:
-                                    is_jal = True
-                                    is_jalr = False
-                                elif include_jalr and opcode == 0:
-                                    is_jal = False
-                                    is_jalr = (((word >> 21) & 31) != 0
-                                               and ((word >> 11) & 31) == 31
-                                               and ((word >> 6) & 31) == 0
-                                               and (word & 63) == 9)
-                                    if not is_jalr:
-                                        continue
-                                else:
+                            word = struct.unpack_from("<I", data, sec_start + idx * 4)[0]
+                            opcode = word >> 26
+                            if opcode == 3:
+                                is_jal = True
+                            elif include_jalr and opcode == 0:
+                                is_jal = False
+                                is_jalr = (((word >> 21) & 31) != 0
+                                           and ((word >> 11) & 31) == 31
+                                           and ((word >> 6) & 31) == 0
+                                           and (word & 63) == 9)
+                                if not is_jalr:
                                     continue
-                                rel = base_rel + idx * 4
-                                pc = addr + rel
-                                target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
-                                mapped = target_is_exec(target) if is_jal else False
-                                count += 1
-                                total += 1
-                                if is_jal and not mapped:
-                                    outside += 1
-                                    outside_total += 1
-                                emit((
-                                    s["name"],
-                                    "0x%08X" % pc,
-                                    "0x%08X" % (off + rel),
-                                    "JAL" if is_jal else "JALR",
-                                    "0x%08X" % word,
-                                    ("0x%08X" % target) if is_jal else "indirect",
-                                    ("yes" if mapped else "no") if is_jal else "unknown",
-                                    "heuristic word scan; inspect in Ghidra",
-                                ))
-                                if args.max_candidates and total >= args.max_candidates:
-                                    note = "stopped early at --max-candidates limit"
-                                    break
+                            else:
+                                continue
+
+                            rel = delta + idx * 4
+                            pc = addr + rel
+                            target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
+                            mapped = target_is_exec(target) if is_jal else False
+                            count += 1
+                            total += 1
+                            if is_jal and not mapped:
+                                outside += 1
+                                outside_total += 1
+                            emit((
+                                s["name"],
+                                "0x%08X" % pc,
+                                "0x%08X" % (off + rel),
+                                "JAL" if is_jal else "JALR",
+                                "0x%08X" % word,
+                                ("0x%08X" % target) if is_jal else "indirect",
+                                ("yes" if mapped else "no") if is_jal else "unknown",
+                                "heuristic word scan; inspect in Ghidra",
+                            ))
                             if args.max_candidates and total >= args.max_candidates:
+                                note = "stopped early at --max-candidates limit"
                                 break
                     section_rows.append({**s, "jal_opcode_candidates": count,
                                          "targets_outside_executable_load_segments": outside,
