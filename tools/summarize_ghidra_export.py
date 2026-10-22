@@ -57,53 +57,107 @@ def main():
                 col_map = [review_header.index(col) if (review_header and col in review_header) else -1 for col in header] if review_header else []
                 review_base_len = len(review_header) - 1 if review_header else 0
                 is_direct_mapping = (review_header is not None and len(header) == review_base_len and col_map == list(range(review_base_len)))
+                hdr_len = len(header)
 
+                # Hot loop optimizations:
+                # - Fast-path column indexing when row matches header length (avoids bounds checks per field).
+                # - Fast-path common literals ("JAL", "JALR", ".text", "0x...", "true", "false") to eliminate .strip(), .upper(), and .lower() string allocations per row.
+                # - Lazy allocation of `reasons` list only on review flags to avoid list creation per valid row.
                 for row in reader:
                     total += 1
                     row_len = len(row)
 
-                    mnemonic_raw = row[mnemonic_idx1] if mnemonic_idx1 != -1 and mnemonic_idx1 < row_len else ""
-                    if not mnemonic_raw and mnemonic_idx2 != -1 and mnemonic_idx2 < row_len:
-                        mnemonic_raw = row[mnemonic_idx2]
-                    mnemonic = (mnemonic_raw or "<unknown>").strip().upper()
+                    if row_len == hdr_len:
+                        mnemonic_raw = row[mnemonic_idx1] if mnemonic_idx1 != -1 else ""
+                        if not mnemonic_raw and mnemonic_idx2 != -1:
+                            mnemonic_raw = row[mnemonic_idx2]
+
+                        block_raw = row[block_idx1] if block_idx1 != -1 else ""
+                        if not block_raw and block_idx2 != -1:
+                            block_raw = row[block_idx2]
+
+                        fn_raw = row[fn_idx] if fn_idx != -1 else ""
+
+                        target_raw = row[target_idx1] if target_idx1 != -1 else ""
+                        if not target_raw and target_idx2 != -1:
+                            target_raw = row[target_idx2]
+
+                        exec_raw = row[exec_idx1] if exec_idx1 != -1 else ""
+                        if not exec_raw and exec_idx2 != -1:
+                            exec_raw = row[exec_idx2]
+                    else:
+                        mnemonic_raw = row[mnemonic_idx1] if mnemonic_idx1 != -1 and mnemonic_idx1 < row_len else ""
+                        if not mnemonic_raw and mnemonic_idx2 != -1 and mnemonic_idx2 < row_len:
+                            mnemonic_raw = row[mnemonic_idx2]
+                        block_raw = row[block_idx1] if block_idx1 != -1 and block_idx1 < row_len else ""
+                        if not block_raw and block_idx2 != -1 and block_idx2 < row_len:
+                            block_raw = row[block_idx2]
+                        fn_raw = row[fn_idx] if fn_idx != -1 and fn_idx < row_len else ""
+                        target_raw = row[target_idx1] if target_idx1 != -1 and target_idx1 < row_len else ""
+                        if not target_raw and target_idx2 != -1 and target_idx2 < row_len:
+                            target_raw = row[target_idx2]
+                        exec_raw = row[exec_idx1] if exec_idx1 != -1 and exec_idx1 < row_len else ""
+                        if not exec_raw and exec_idx2 != -1 and exec_idx2 < row_len:
+                            exec_raw = row[exec_idx2]
+
+                    if mnemonic_raw == "JAL":
+                        mnemonic = "JAL"
+                    elif mnemonic_raw == "JALR":
+                        mnemonic = "JALR"
+                    else:
+                        mnemonic = (mnemonic_raw or "<unknown>").strip().upper()
                     mnemonic_counts[mnemonic] += 1
 
-                    block_raw = row[block_idx1] if block_idx1 != -1 and block_idx1 < row_len else ""
-                    if not block_raw and block_idx2 != -1 and block_idx2 < row_len:
-                        block_raw = row[block_idx2]
-                    block = (block_raw or "<unknown>").strip()
+                    if block_raw == ".text":
+                        block = ".text"
+                    else:
+                        block = (block_raw or "<unknown>").strip()
                     block_counts[block] += 1
 
-                    fn_raw = row[fn_idx] if fn_idx != -1 and fn_idx < row_len else ""
-                    fn = (fn_raw or "<no function>").strip()
+                    if fn_raw == "<no function>" or not fn_raw:
+                        fn = "<no function>"
+                    else:
+                        fn = fn_raw.strip()
                     function_counts[fn] += 1
 
-                    target_raw = row[target_idx1] if target_idx1 != -1 and target_idx1 < row_len else ""
-                    if not target_raw and target_idx2 != -1 and target_idx2 < row_len:
-                        target_raw = row[target_idx2]
-                    target = target_raw.strip()
+                    if target_raw.startswith(("0x", "0X")):
+                        target = target_raw
+                        is_unresolved = False
+                    else:
+                        target = target_raw.strip()
+                        target_lower = target.lower()
+                        is_unresolved = not target or "no resolved" in target_lower or target_lower == "indirect"
 
-                    exec_raw = row[exec_idx1] if exec_idx1 != -1 and exec_idx1 < row_len else ""
-                    if not exec_raw and exec_idx2 != -1 and exec_idx2 < row_len:
-                        exec_raw = row[exec_idx2]
-                    executable = exec_raw.strip().lower()
+                    if exec_raw == "true" or exec_raw == "yes":
+                        is_nonexec = False
+                    elif exec_raw == "false" or exec_raw == "no":
+                        is_nonexec = True
+                    else:
+                        is_nonexec = exec_raw.strip().lower() in ("false", "no")
 
-                    reasons = []
-                    if not target or "no resolved" in target.lower() or "indirect" == target.lower():
+                    reasons = None
+                    if is_unresolved:
                         missing_targets += 1
-                        reasons.append("target unresolved/indirect")
-                    if executable in ("false", "no"):
+                        reasons = ["target unresolved/indirect"]
+
+                    if is_nonexec:
                         nonexec_targets += 1
+                        if reasons is None:
+                            reasons = []
                         reasons.append("target not marked executable by this analysis")
+
                     if fn in ("<no function>", ""):
                         no_function += 1
+                        if reasons is None:
+                            reasons = []
                         reasons.append("instruction is not inside a defined function")
+
                     if reasons:
                         review_rows += 1
                         for r in reasons:
                             flag_counts[r] += 1
                         if review_writer:
-                            reason_str = "; ".join(reasons)
+                            reason_str = reasons[0] if len(reasons) == 1 else "; ".join(reasons)
                             if is_direct_mapping and row_len == review_base_len:
                                 review_writer.writerow(row + [reason_str])
                             elif is_direct_mapping:
