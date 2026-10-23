@@ -4,6 +4,11 @@ import argparse, csv, json
 from collections import Counter
 from pathlib import Path
 
+# Pre-defined review flag reason constants
+REASON_UNRESOLVED = "target unresolved/indirect"
+REASON_NONEXEC = "target not marked executable by this analysis"
+REASON_NO_FN = "instruction is not inside a defined function"
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -19,7 +24,10 @@ def main():
     try:
         if not args.no_review_csv:
             args.review_out.parent.mkdir(parents=True, exist_ok=True)
-            review_file = args.review_out.open("w", newline="", encoding="utf-8-sig")
+            # Use encoding="utf-8" and write "\ufeff" (UTF-8 BOM) explicitly to bypass
+            # Python's utf_8_sig IncrementalEncoder wrapper overhead on every row write.
+            review_file = args.review_out.open("w", newline="", encoding="utf-8")
+            review_file.write("\ufeff")
         for path in args.csv_files:
             if not path.is_file():
                 raise FileNotFoundError("CSV not found: %s" % path)
@@ -82,28 +90,35 @@ def main():
                     if not target_raw and target_idx2 != -1 and target_idx2 < row_len:
                         target_raw = row[target_idx2]
                     target = target_raw.strip()
+                    target_lower = target.lower()
 
                     exec_raw = row[exec_idx1] if exec_idx1 != -1 and exec_idx1 < row_len else ""
                     if not exec_raw and exec_idx2 != -1 and exec_idx2 < row_len:
                         exec_raw = row[exec_idx2]
                     executable = exec_raw.strip().lower()
 
-                    reasons = []
-                    if not target or "no resolved" in target.lower() or "indirect" == target.lower():
-                        missing_targets += 1
-                        reasons.append("target unresolved/indirect")
-                    if executable in ("false", "no"):
-                        nonexec_targets += 1
-                        reasons.append("target not marked executable by this analysis")
-                    if fn in ("<no function>", ""):
-                        no_function += 1
-                        reasons.append("instruction is not inside a defined function")
-                    if reasons:
+                    is_unresolved = not target or "no resolved" in target_lower or target_lower == "indirect"
+                    is_nonexec = executable in ("false", "no")
+                    is_no_fn = fn in ("<no function>", "")
+
+                    if is_unresolved or is_nonexec or is_no_fn:
                         review_rows += 1
-                        for r in reasons:
-                            flag_counts[r] += 1
+                        reasons = []
+                        if is_unresolved:
+                            missing_targets += 1
+                            flag_counts[REASON_UNRESOLVED] += 1
+                            reasons.append(REASON_UNRESOLVED)
+                        if is_nonexec:
+                            nonexec_targets += 1
+                            flag_counts[REASON_NONEXEC] += 1
+                            reasons.append(REASON_NONEXEC)
+                        if is_no_fn:
+                            no_function += 1
+                            flag_counts[REASON_NO_FN] += 1
+                            reasons.append(REASON_NO_FN)
+
                         if review_writer:
-                            reason_str = "; ".join(reasons)
+                            reason_str = reasons[0] if len(reasons) == 1 else "; ".join(reasons)
                             if is_direct_mapping and row_len == review_base_len:
                                 review_writer.writerow(row + [reason_str])
                             elif is_direct_mapping:
