@@ -12,7 +12,17 @@ def main():
     ap.add_argument("--review-out", type=Path, default=Path("reports/rows_for_review.csv"), help="Rows flagged for manual review")
     ap.add_argument("--no-review-csv", action="store_true", help="Do not write review CSV")
     args = ap.parse_args()
-    mnemonic_counts, block_counts, function_counts, flag_counts = Counter(), Counter(), Counter(), Counter()
+    # Pre-defined review reason strings to avoid string allocations inside hot loop
+    REASON_UNRESOLVED = "target unresolved/indirect"
+    REASON_NONEXEC = "target not marked executable by this analysis"
+    REASON_NOFUNC = "instruction is not inside a defined function"
+    COMBO_12 = REASON_UNRESOLVED + "; " + REASON_NONEXEC
+    COMBO_13 = REASON_UNRESOLVED + "; " + REASON_NOFUNC
+    COMBO_23 = REASON_NONEXEC + "; " + REASON_NOFUNC
+    COMBO_123 = REASON_UNRESOLVED + "; " + REASON_NONEXEC + "; " + REASON_NOFUNC
+
+    # Use standard dict instead of Counter inside the hot loop to reduce method lookup overhead
+    mnemonic_counts, block_counts, function_counts, flag_counts = {}, {}, {}, {}
     total, missing_targets, nonexec_targets, no_function, review_rows = 0, 0, 0, 0, 0
     review_writer = review_file = None
     review_header = None
@@ -39,19 +49,20 @@ def main():
                     review_header = list(header) + ["review_reason"]
                     review_writer.writerow(review_header)
 
-                mnemonic_idx1 = header.index("mnemonic") if "mnemonic" in header else -1
-                mnemonic_idx2 = header.index("opcode") if "opcode" in header else -1
+                # Pre-resolve primary and alternate column indices per file
+                m_idx = header.index("mnemonic") if "mnemonic" in header else (header.index("opcode") if "opcode" in header else -1)
+                alt_m_idx = header.index("opcode") if ("mnemonic" in header and "opcode" in header) else -1
 
-                block_idx1 = header.index("source_block") if "source_block" in header else -1
-                block_idx2 = header.index("section") if "section" in header else -1
+                b_idx = header.index("source_block") if "source_block" in header else (header.index("section") if "section" in header else -1)
+                alt_b_idx = header.index("section") if ("source_block" in header and "section" in header) else -1
 
-                fn_idx = header.index("function") if "function" in header else -1
+                fn_i = header.index("function") if "function" in header else -1
 
-                target_idx1 = header.index("flow_targets") if "flow_targets" in header else -1
-                target_idx2 = header.index("static_target") if "static_target" in header else -1
+                t_idx = header.index("flow_targets") if "flow_targets" in header else (header.index("static_target") if "static_target" in header else -1)
+                alt_t_idx = header.index("static_target") if ("flow_targets" in header and "static_target" in header) else -1
 
-                exec_idx1 = header.index("target_executable") if "target_executable" in header else -1
-                exec_idx2 = header.index("target_in_executable_load_segment") if "target_in_executable_load_segment" in header else -1
+                e_idx = header.index("target_executable") if "target_executable" in header else (header.index("target_in_executable_load_segment") if "target_in_executable_load_segment" in header else -1)
+                alt_e_idx = header.index("target_in_executable_load_segment") if ("target_executable" in header and "target_in_executable_load_segment" in header) else -1
 
                 # Map current file column positions to review_header positions to support multi-file inputs with varying schemas
                 col_map = [review_header.index(col) if (review_header and col in review_header) else -1 for col in header] if review_header else []
@@ -62,48 +73,65 @@ def main():
                     total += 1
                     row_len = len(row)
 
-                    mnemonic_raw = row[mnemonic_idx1] if mnemonic_idx1 != -1 and mnemonic_idx1 < row_len else ""
-                    if not mnemonic_raw and mnemonic_idx2 != -1 and mnemonic_idx2 < row_len:
-                        mnemonic_raw = row[mnemonic_idx2]
-                    mnemonic = (mnemonic_raw or "<unknown>").strip().upper()
-                    mnemonic_counts[mnemonic] += 1
+                    m_raw = row[m_idx] if m_idx != -1 and m_idx < row_len else ""
+                    if not m_raw and alt_m_idx != -1 and alt_m_idx < row_len:
+                        m_raw = row[alt_m_idx]
+                    mnemonic = m_raw.strip().upper() if m_raw else "<UNKNOWN>"
+                    mnemonic_counts[mnemonic] = mnemonic_counts.get(mnemonic, 0) + 1
 
-                    block_raw = row[block_idx1] if block_idx1 != -1 and block_idx1 < row_len else ""
-                    if not block_raw and block_idx2 != -1 and block_idx2 < row_len:
-                        block_raw = row[block_idx2]
-                    block = (block_raw or "<unknown>").strip()
-                    block_counts[block] += 1
+                    b_raw = row[b_idx] if b_idx != -1 and b_idx < row_len else ""
+                    if not b_raw and alt_b_idx != -1 and alt_b_idx < row_len:
+                        b_raw = row[alt_b_idx]
+                    block = b_raw.strip() if b_raw else "<unknown>"
+                    block_counts[block] = block_counts.get(block, 0) + 1
 
-                    fn_raw = row[fn_idx] if fn_idx != -1 and fn_idx < row_len else ""
-                    fn = (fn_raw or "<no function>").strip()
-                    function_counts[fn] += 1
+                    fn_raw = row[fn_i] if fn_i != -1 and fn_i < row_len else ""
+                    fn = fn_raw.strip() if fn_raw else "<no function>"
+                    function_counts[fn] = function_counts.get(fn, 0) + 1
 
-                    target_raw = row[target_idx1] if target_idx1 != -1 and target_idx1 < row_len else ""
-                    if not target_raw and target_idx2 != -1 and target_idx2 < row_len:
-                        target_raw = row[target_idx2]
-                    target = target_raw.strip()
+                    t_raw = row[t_idx] if t_idx != -1 and t_idx < row_len else ""
+                    if not t_raw and alt_t_idx != -1 and alt_t_idx < row_len:
+                        t_raw = row[alt_t_idx]
+                    target = t_raw.strip() if t_raw else ""
+                    target_lower = target.lower() if target else ""
 
-                    exec_raw = row[exec_idx1] if exec_idx1 != -1 and exec_idx1 < row_len else ""
-                    if not exec_raw and exec_idx2 != -1 and exec_idx2 < row_len:
-                        exec_raw = row[exec_idx2]
-                    executable = exec_raw.strip().lower()
+                    e_raw = row[e_idx] if e_idx != -1 and e_idx < row_len else ""
+                    if not e_raw and alt_e_idx != -1 and alt_e_idx < row_len:
+                        e_raw = row[alt_e_idx]
+                    executable = e_raw.strip().lower() if e_raw else ""
 
-                    reasons = []
-                    if not target or "no resolved" in target.lower() or "indirect" == target.lower():
-                        missing_targets += 1
-                        reasons.append("target unresolved/indirect")
-                    if executable in ("false", "no"):
-                        nonexec_targets += 1
-                        reasons.append("target not marked executable by this analysis")
-                    if fn in ("<no function>", ""):
-                        no_function += 1
-                        reasons.append("instruction is not inside a defined function")
-                    if reasons:
+                    r1 = not target_lower or "no resolved" in target_lower or target_lower == "indirect"
+                    r2 = executable in ("false", "no")
+                    r3 = fn in ("<no function>", "")
+
+                    if r1 or r2 or r3:
                         review_rows += 1
-                        for r in reasons:
-                            flag_counts[r] += 1
+                        if r1:
+                            missing_targets += 1
+                            flag_counts[REASON_UNRESOLVED] = flag_counts.get(REASON_UNRESOLVED, 0) + 1
+                        if r2:
+                            nonexec_targets += 1
+                            flag_counts[REASON_NONEXEC] = flag_counts.get(REASON_NONEXEC, 0) + 1
+                        if r3:
+                            no_function += 1
+                            flag_counts[REASON_NOFUNC] = flag_counts.get(REASON_NOFUNC, 0) + 1
+
                         if review_writer:
-                            reason_str = "; ".join(reasons)
+                            if r1 and r2 and r3:
+                                reason_str = COMBO_123
+                            elif r1 and r2:
+                                reason_str = COMBO_12
+                            elif r1 and r3:
+                                reason_str = COMBO_13
+                            elif r2 and r3:
+                                reason_str = COMBO_23
+                            elif r1:
+                                reason_str = REASON_UNRESOLVED
+                            elif r2:
+                                reason_str = REASON_NONEXEC
+                            else:
+                                reason_str = REASON_NOFUNC
+
                             if is_direct_mapping and row_len == review_base_len:
                                 review_writer.writerow(row + [reason_str])
                             elif is_direct_mapping:
@@ -120,13 +148,13 @@ def main():
                                 out_row[-1] = reason_str
                                 review_writer.writerow(out_row)
         summary = {"input_files": [str(p) for p in args.csv_files], "rows_processed": total,
-                   "mnemonic_counts": dict(mnemonic_counts.most_common()),
-                   "rows_by_section_or_block": dict(block_counts.most_common()),
-                   "top_functions": function_counts.most_common(100),
+                   "mnemonic_counts": dict(sorted(mnemonic_counts.items(), key=lambda x: x[1], reverse=True)),
+                   "rows_by_section_or_block": dict(sorted(block_counts.items(), key=lambda x: x[1], reverse=True)),
+                   "top_functions": sorted(function_counts.items(), key=lambda x: x[1], reverse=True)[:100],
                    "unresolved_or_indirect_target_rows": missing_targets,
                    "targets_not_marked_executable_rows": nonexec_targets,
                    "rows_without_defined_function": no_function, "rows_flagged_for_manual_review": review_rows,
-                   "review_flag_reason_counts": dict(flag_counts),
+                   "review_flag_reason_counts": flag_counts,
                    "warning": "Review flags are triage hints only. Overlays, data-as-code, imports and Ghidra memory mapping can make a target appear non-executable without being a broken instruction."}
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
