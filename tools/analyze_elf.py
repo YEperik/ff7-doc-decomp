@@ -153,56 +153,74 @@ def main():
                         total_words = (secsize - delta) // 4
                         sec_start = off + delta
                         sec_end = sec_start + total_words * 4
-                        # Byte-3 pre-filter: in little-endian MIPS 32-bit instructions,
-                        # byte 3 contains opcode in bits [7:2].
-                        # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
-                        # Opcode 0 (SPECIAL / JALR candidate) has byte 3 in 0..3 (0x00..0x03).
-                        # Slicing byte 3 across the section bypasses unpacking ~95%+ non-candidate words.
-                        byte3_slice = data[sec_start + 3:sec_end:4]
-                        for idx, b in enumerate(byte3_slice):
-                            if 12 <= b <= 15:
-                                pass
-                            elif include_jalr and 0 <= b <= 3:
-                                pass
-                            else:
+                        # Batch-unpack 32-bit words in CHUNK_WORDS blocks (64K words / 256 KB).
+                        # Pre-filter each 64K chunk using byte 3 slicing before unpacking
+                        # to eliminate struct.unpack_from overhead for non-candidate chunks.
+                        for chunk_offset in range(0, total_words, CHUNK_WORDS):
+                            chunk_len = min(CHUNK_WORDS, total_words - chunk_offset)
+                            c_off = sec_start + chunk_offset * 4
+
+                            # Byte-3 pre-filter slice across this 64K chunk:
+                            # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
+                            # Opcode 0 (SPECIAL / JALR) has byte 3 in 0..3 (0x00..0x03).
+                            b3_slice = data[c_off + 3 : c_off + chunk_len * 4 : 4]
+
+                            # Check if chunk contains candidate opcode bytes before unpacking
+                            has_jal = any(12 <= b <= 15 for b in b3_slice)
+                            has_jalr = include_jalr and any(0 <= b <= 3 for b in b3_slice)
+                            if not (has_jal or has_jalr):
                                 continue
 
-                            word = struct.unpack_from("<I", data, sec_start + idx * 4)[0]
-                            opcode = word >> 26
-                            if opcode == 3:
-                                is_jal = True
-                            elif include_jalr and opcode == 0:
-                                is_jal = False
-                                is_jalr = (((word >> 21) & 31) != 0
-                                           and ((word >> 11) & 31) == 31
-                                           and ((word >> 6) & 31) == 0
-                                           and (word & 63) == 9)
-                                if not is_jalr:
+                            fmt = CHUNK_FMT if chunk_len == CHUNK_WORDS else f"<{chunk_len}I"
+                            chunk_words = struct.unpack_from(fmt, data, c_off)
+
+                            for c_idx, b in enumerate(b3_slice):
+                                if 12 <= b <= 15:
+                                    pass
+                                elif include_jalr and 0 <= b <= 3:
+                                    pass
+                                else:
                                     continue
-                            else:
-                                continue
 
-                            rel = delta + idx * 4
-                            pc = addr + rel
-                            target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
-                            mapped = target_is_exec(target) if is_jal else False
-                            count += 1
-                            total += 1
-                            if is_jal and not mapped:
-                                outside += 1
-                                outside_total += 1
-                            emit((
-                                s["name"],
-                                "0x%08X" % pc,
-                                "0x%08X" % (off + rel),
-                                "JAL" if is_jal else "JALR",
-                                "0x%08X" % word,
-                                ("0x%08X" % target) if is_jal else "indirect",
-                                ("yes" if mapped else "no") if is_jal else "unknown",
-                                "heuristic word scan; inspect in Ghidra",
-                            ))
+                                word = chunk_words[c_idx]
+                                opcode = word >> 26
+                                if opcode == 3:
+                                    is_jal = True
+                                elif include_jalr and opcode == 0:
+                                    is_jal = False
+                                    is_jalr = (((word >> 21) & 31) != 0
+                                               and ((word >> 11) & 31) == 31
+                                               and ((word >> 6) & 31) == 0
+                                               and (word & 63) == 9)
+                                    if not is_jalr:
+                                        continue
+                                else:
+                                    continue
+
+                                idx = chunk_offset + c_idx
+                                rel = delta + idx * 4
+                                pc = addr + rel
+                                target = (((pc + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) if is_jal else 0
+                                mapped = target_is_exec(target) if is_jal else False
+                                count += 1
+                                total += 1
+                                if is_jal and not mapped:
+                                    outside += 1
+                                    outside_total += 1
+                                emit((
+                                    s["name"],
+                                    "0x%08X" % pc,
+                                    "0x%08X" % (off + rel),
+                                    "JAL" if is_jal else "JALR",
+                                    "0x%08X" % word,
+                                    ("0x%08X" % target) if is_jal else "indirect",
+                                    ("yes" if mapped else "no") if is_jal else "unknown",
+                                    "heuristic word scan; inspect in Ghidra",
+                                ))
+                                if args.max_candidates and total >= args.max_candidates:
+                                    note = "stopped early at --max-candidates limit"
+                                    break
                             if args.max_candidates and total >= args.max_candidates:
-                                note = "stopped early at --max-candidates limit"
                                 break
                     section_rows.append({**s, "jal_opcode_candidates": count,
                                          "targets_outside_executable_load_segments": outside,
