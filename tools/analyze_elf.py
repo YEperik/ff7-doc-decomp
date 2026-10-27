@@ -158,15 +158,15 @@ def main():
                         # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
                         # Opcode 0 (SPECIAL / JALR candidate) has byte 3 in 0..3 (0x00..0x03).
                         # Slicing byte 3 across the section bypasses unpacking ~95%+ non-candidate words.
+                        # Use C-speed list comprehension index filtering over byte 3 to avoid
+                        # per-byte Python loop branching overhead for millions of non-candidate words.
                         byte3_slice = data[sec_start + 3:sec_end:4]
-                        for idx, b in enumerate(byte3_slice):
-                            if 12 <= b <= 15:
-                                pass
-                            elif include_jalr and 0 <= b <= 3:
-                                pass
-                            else:
-                                continue
+                        if include_jalr:
+                            candidate_indices = [i for i, b in enumerate(byte3_slice) if (12 <= b <= 15) or (0 <= b <= 3)]
+                        else:
+                            candidate_indices = [i for i, b in enumerate(byte3_slice) if 12 <= b <= 15]
 
+                        for idx in candidate_indices:
                             word = struct.unpack_from("<I", data, sec_start + idx * 4)[0]
                             opcode = word >> 26
                             if opcode == 3:
