@@ -100,12 +100,21 @@ def main():
                 if p_type == PT_LOAD and p_flags & PF_X and memsz:
                     exec_ranges.append((vaddr, vaddr + memsz))
 
-            # Direct range check avoids generator expression allocation on every candidate check
-            def target_is_exec(addr):
-                for lo, hi in exec_ranges:
-                    if lo <= addr < hi:
-                        return True
-                return False
+            # Direct range check avoids generator expression allocation on every candidate check;
+            # specialize for single-range executables to avoid tuple iteration per call.
+            if not exec_ranges:
+                def target_is_exec(addr):
+                    return False
+            elif len(exec_ranges) == 1:
+                exec_lo, exec_hi = exec_ranges[0]
+                def target_is_exec(addr):
+                    return exec_lo <= addr < exec_hi
+            else:
+                def target_is_exec(addr):
+                    for lo, hi in exec_ranges:
+                        if lo <= addr < hi:
+                            return True
+                    return False
 
             section_rows, total, outside_total = [], 0, 0
             part_no, part_count, writer, out_handle = 0, 0, None, None
@@ -158,18 +167,26 @@ def main():
                         # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
                         # Opcode 0 (SPECIAL / JALR candidate) has byte 3 in 0..3 (0x00..0x03).
                         # Slicing byte 3 across the section bypasses unpacking ~95%+ non-candidate words.
+                        # Separate JAL-only and JAL+JALR paths to avoid checking include_jalr on every non-candidate word.
                         byte3_slice = data[sec_start + 3:sec_end:4]
-                        for idx, b in enumerate(byte3_slice):
-                            if 12 <= b <= 15:
-                                pass
-                            elif include_jalr and 0 <= b <= 3:
-                                pass
-                            else:
-                                continue
+                        candidate_indices = []
+                        if not include_jalr:
+                            for idx, b in enumerate(byte3_slice):
+                                if 12 <= b <= 15:
+                                    candidate_indices.append((idx, True))
+                        else:
+                            for idx, b in enumerate(byte3_slice):
+                                if 12 <= b <= 15:
+                                    candidate_indices.append((idx, True))
+                                elif 0 <= b <= 3:
+                                    candidate_indices.append((idx, False))
 
+                        for idx, is_jal_cand in candidate_indices:
                             word = struct.unpack_from("<I", data, sec_start + idx * 4)[0]
                             opcode = word >> 26
-                            if opcode == 3:
+                            if is_jal_cand:
+                                if opcode != 3:
+                                    continue
                                 is_jal = True
                             elif include_jalr and opcode == 0:
                                 is_jal = False
