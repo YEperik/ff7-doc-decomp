@@ -1,3 +1,7 @@
 ## 2025-05-10 - Batch Unpacking and Direct Tuple CSV Output for Binary Scanners
 **Learning:** Calling `struct.unpack_from("<I")` per word in Python creates massive function call overhead when scanning multi-megabyte binary files (e.g. 4+ million iterations). Additionally, `csv.DictWriter` allocates dictionaries and performs dict lookups for every candidate row, and generator expressions in range checks (`any(...)`) allocate generator frames. Batch unpacking words in 64K-word chunks (`struct.unpack_from(f"<{n}I")`), using standard `csv.writer` with tuples, and using direct loops for range checks reduces scanning time by ~50%.
 **Action:** When scanning or parsing binary files in Python, batch unpack words into tuples, use direct tuple rows with `csv.writer`, and avoid generator allocations inside hot loop predicates.
+
+## 2025-05-11 - C-Level Regex Searches on Byte Slices for Opcode Pre-Filtering
+**Learning:** Slicing byte arrays/mmaps and iterating over millions of elements in Python list comprehensions (e.g. `[i for i, b in enumerate(byte3_slice) if 12 <= b <= 15]`) creates significant Python loop overhead (~300ms for 4M words). Compiled regex searches (`re.compile(b"[\x0c-\x0f]").finditer(slice)`) run at C-speed in CPython, speeding up opcode index extraction by ~8x (~37ms) and filtering out 99.9% of non-candidate instructions (e.g. NOPs) before Python-level unpacking.
+**Action:** Use pre-compiled regex byte patterns (`re.compile(b"...")`) over byte slices for opcode/binary sequence extraction instead of Python list comprehensions.

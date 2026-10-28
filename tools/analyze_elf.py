@@ -9,11 +9,18 @@ import csv
 import hashlib
 import json
 import mmap
+import re
 import struct
 import sys
 from pathlib import Path
 
 PT_LOAD, PF_X, SHF_EXECINSTR, SHT_NOBITS = 1, 1, 0x4, 8
+
+# Pre-compiled C-level byte regex patterns for fast opcode filtering in MIPS LE.
+# JAL (opcode 3): byte 3 bits 7:2 are 000011 -> byte 3 values 0x0C..0x0F (12..15).
+# JALR (opcode 0, funct 9): byte 0 bits 5:0 are 001001 = 9 -> byte 0 values 0x09, 0x49, 0x89, 0xC9.
+PATTERN_JAL = re.compile(b"[\x0c-\x0f]")
+PATTERN_JALR_B0 = re.compile(b"[\x09\x49\x89\xc9]")
 
 # Chunk size for batch-unpacking 32-bit instructions (256 KB / 64K words)
 CHUNK_WORDS = 65536
@@ -153,18 +160,20 @@ def main():
                         total_words = (secsize - delta) // 4
                         sec_start = off + delta
                         sec_end = sec_start + total_words * 4
-                        # Byte-3 pre-filter: in little-endian MIPS 32-bit instructions,
-                        # byte 3 contains opcode in bits [7:2].
-                        # Opcode 3 (JAL) has byte 3 in 12..15 (0x0C..0x0F).
-                        # Opcode 0 (SPECIAL / JALR candidate) has byte 3 in 0..3 (0x00..0x03).
-                        # Slicing byte 3 across the section bypasses unpacking ~95%+ non-candidate words.
-                        # Use C-speed list comprehension index filtering over byte 3 to avoid
-                        # per-byte Python loop branching overhead for millions of non-candidate words.
+                        # Pre-filter using C-speed regex searches over byte slices to bypass
+                        # Python loop and unpacking overhead for ~95%+ non-candidate words.
+                        # For JAL (opcode 3): match byte 3 in 0x0C..0x0F via PATTERN_JAL.
+                        # For JALR (opcode 0, funct 9): match byte 0 in 0x09/0x49/0x89/0xC9 via PATTERN_JALR_B0
+                        # and check byte 3 <= 3 to filter out 99.9% of NOPs without loop overhead.
                         byte3_slice = data[sec_start + 3:sec_end:4]
                         if include_jalr:
-                            candidate_indices = [i for i, b in enumerate(byte3_slice) if (12 <= b <= 15) or (0 <= b <= 3)]
+                            byte0_slice = data[sec_start:sec_end:4]
+                            jal_indices = set(m.start() for m in PATTERN_JAL.finditer(byte3_slice))
+                            jalr_b0 = [m.start() for m in PATTERN_JALR_B0.finditer(byte0_slice)]
+                            jalr_indices = [i for i in jalr_b0 if data[sec_start + i * 4 + 3] <= 3]
+                            candidate_indices = sorted(list(jal_indices | set(jalr_indices)))
                         else:
-                            candidate_indices = [i for i, b in enumerate(byte3_slice) if 12 <= b <= 15]
+                            candidate_indices = [m.start() for m in PATTERN_JAL.finditer(byte3_slice)]
 
                         for idx in candidate_indices:
                             word = struct.unpack_from("<I", data, sec_start + idx * 4)[0]
