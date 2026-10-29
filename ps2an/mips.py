@@ -12,6 +12,10 @@ _MEM = {32:"lb",33:"lh",34:"lwl",35:"lw",36:"lbu",37:"lhu",38:"lwr",39:"lwu",40:
 _BR = {4:"beq",5:"bne",6:"blez",7:"bgtz",20:"beql",21:"bnel",22:"blezl",23:"bgtzl"}
 _RI = {0:"bltz",1:"bgez",2:"bltzl",3:"bgezl",16:"bltzal",17:"bgezal"}
 
+_MMI = {(0x08, 0x00): "paddw", (0x08, 0x01): "psubw", (0x08, 0x02): "pcgtw", (0x08, 0x03): "pmaxw", (0x08, 0x04): "paddh", (0x08, 0x05): "psubh",
+ (0x08, 0x06): "pcgth", (0x08, 0x07): "pmaxh", (0x08, 0x08): "paddb", (0x08, 0x09): "psubb", (0x08, 0x0A): "pcgtb", (0x08, 0x12): "pextlw", (0x08, 0x13): "ppacw",
+ (0x28, 0x02): "pceqw", (0x28, 0x06): "pceqh", (0x28, 0x0A): "pceqb",
+ (0x09, 0x0E): "pcpyld", (0x09, 0x12): "pand", (0x09, 0x13): "pxor", (0x29, 0x0E): "pcpyud", (0x29, 0x12): "por", (0x29, 0x13): "pnor"}
 def is_jr_ra(w): return w == 0x03E00008
 def is_nop(w): return w == 0
 def is_jal(w): return w >> 26 == 3
@@ -52,6 +56,10 @@ def decode(w, pc):
     if op in _MEM:
         reg = "$f%d" % rt if op in (49,57) else ("$vf%d" % rt if op in (54,61) else "$" + R[rt])
         return "%s %s, %d($%s)" % (_MEM[op], reg, s16(imm), R[rs])
+    if op == 0x1C:
+        key = (w & 63, sa)
+        if key in _MMI: return "%s $%s, $%s, $%s" % (_MMI[key], R[rd], R[rs], R[rt])
+        if key == (0x29, 0x1B): return "pcpyh $%s, $%s" % (R[rd], R[rt])
     if op == 16 and rs in (0, 4): return "%s $%s, $%d" % ("mfc0" if rs == 0 else "mtc0", R[rt], rd)
     if op == 17 and rs in (0, 4): return "%s $%s, $f%d" % ("mfc1" if rs == 0 else "mtc1", R[rt], rd)
     return ".word 0x%08x" % w
