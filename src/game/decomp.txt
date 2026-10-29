@@ -1,0 +1,20 @@
+# Functions with a C reconstruction in src/game/ that passes tests/game_test.py
+cstack_pop = 0x003aa140;
+cstack_push_int = 0x003aa0c0;
+cstack_drop = 0x003aa108;
+get_gvar_004efda0 = 0x003a8db8;
+get_gvar_0046de04 = 0x002e14e8;
+get_gvar_004b8d9c = 0x00241a00;
+set_gvar_004b8d9c = 0x002419f0;
+get_gvar_004b8d3c = 0x00241a10;
+set_gvar_0046b3d4 = 0x002413e0;
+get_flag_004b8cc8 = 0x002419d8;
+has_flag_004b8b80 = 0x002413c0;
+copy16 = 0x00444eb8;
+FUN_0055a570 = 0x0055a570;
+FUN_00316d38 = 0x00316d38;
+FUN_002535e0 = 0x002535e0;
+FUN_003cb2f8 = 0x003cb2f8;
+FUN_002533b0 = 0x002533b0;
+FUN_002533f0 = 0x002533f0;
+FUN_00340bf8 = 0x00340bf8;
