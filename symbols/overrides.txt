@@ -1,3 +1,8 @@
 setjmp  = 0x00447ef0; // saves s0-s7, fp, f24-f31, sp, ra into a0 and returns 0
 longjmp = 0x00447f48; // restores the same set from a0, returns a1 (1 if a1 == 0); was merged into setjmp by auto-detection
 FUN_00422f78 = 0x00422f78; // boundary only: new function starts right after the `j memcpy` thunk at 0x00422f70
+FUN_002419f0 = 0x002419f0; // boundary only: `jr ra` + delay slot of the previous function ends at 0x2419ec
+FUN_00241a00 = 0x00241a00; // boundary only
+FUN_00241a10 = 0x00241a10; // boundary only
+FUN_002413e0 = 0x002413e0; // boundary only
+FUN_002533f0 = 0x002533f0; // boundary only
