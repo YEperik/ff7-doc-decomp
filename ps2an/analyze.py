@@ -12,7 +12,55 @@ def load_overrides(path):
             if m: out[int(m.group(2), 16)] = m.group(1)
     return out
 
-def find_functions(elf, extra=()):
+# registers that may legitimately be read before being written at a function entry:
+# zero, args a0-a3/t0-t3 (EABI64), callee-saved s0-s7, gp, sp, fp, ra
+_ENTRY_OK = {0, 4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31}
+
+def _reads_writes(w):
+    """(reads, write) register sets for the core integer ISA; None if the opcode is not modelled."""
+    op = w >> 26; rs = (w >> 21) & 31; rt = (w >> 16) & 31; rd = (w >> 11) & 31
+    if op == 0:
+        f = w & 63
+        if f in (0, 2, 3, 56, 58, 59, 60, 62, 63): return {rt}, rd
+        if f == 8: return {rs}, None
+        if f == 9: return {rs}, rd
+        if f in (16, 18): return set(), rd
+        if f in (17, 19): return {rs}, None
+        if f in (24, 25, 26, 27): return {rs, rt}, None
+        if f in (12, 13, 15): return set(), None
+        return {rs, rt}, rd
+    if op in (8, 9, 10, 11, 12, 13, 14, 24, 25): return {rs}, rt
+    if op == 15: return set(), rt
+    if op in (32, 33, 34, 35, 36, 37, 38, 39, 55, 26, 27): return {rs}, rt
+    if op in (40, 41, 42, 43, 44, 45, 46, 63): return {rs, rt}, None
+    if op in (30,): return {rs}, rt
+    if op == 31: return {rs, rt}, None
+    if op in (4, 5, 20, 21): return {rs, rt}, None
+    if op in (6, 7, 22, 23, 1): return {rs}, None
+    if op in (2, 3): return set(), None
+    return None
+
+def plausible_entry(W, i, span=24):
+    """True if straight-line code from W[i] never reads a scratch register before writing it."""
+    defined = set()
+    for k in range(i, min(i + span, len(W))):
+        w = W[k]
+        if w == 0: continue
+        rw = _reads_writes(w)
+        if rw is None: return True                      # unmodelled opcode: stop checking, accept
+        r, wr = rw
+        if any(x not in _ENTRY_OK and x not in defined for x in r): return False
+        if wr is not None: defined.add(wr)
+        op = w >> 26
+        if op in (2, 3, 1, 4, 5, 6, 7, 20, 21, 22, 23) or (op == 0 and (w & 63) in (8, 9)):
+            # control flow: inspect the delay slot, then stop
+            if k + 1 < len(W):
+                rw2 = _reads_writes(W[k + 1])
+                if rw2 and any(x not in _ENTRY_OK and x not in defined for x in rw2[0]): return False
+            return True
+    return True
+
+def find_functions(elf, extra=(), tail=False):
     """Return {addr: source} using jal targets + prologue-after-return heuristic."""
     ranges = [(s.addr, s.addr + s.size) for s in elf.code_sections()]
     inr = lambda a: a % 4 == 0 and any(lo <= a < hi for lo, hi in ranges)
@@ -32,8 +80,32 @@ def find_functions(elf, extra=()):
                 elif i >= 2 and W[i - 2] == 0x03E00008:
                     funcs.setdefault(pc, "prologue")
         funcs.setdefault(base, "section")
+    if tail: funcs.update(_tail_functions(elf, funcs))      # research only: precision unproven
     for a in extra: funcs[a] = "manual"
     return dict(sorted(funcs.items()))
+
+def _tail_functions(elf, funcs):
+    """Tiny functions without prologue or jal caller: 8-aligned code after `jr ra; delay; nop*`,
+    never a branch/jump target, never a pointer stored in data, and with a plausible entry."""
+    targets = set(); out = {}
+    for s in elf.code_sections():
+        W = elf.words(s)
+        for i, w in enumerate(W):
+            pc = s.addr + 4 * i; op = w >> 26
+            if op in (4, 5, 6, 7, 20, 21, 22, 23) or (op == 1 and ((w >> 16) & 31) in (0, 1, 2, 3)): targets.add(pc + 4 + (mips.s16(w & 0xFFFF) << 2))
+            elif op == 2: targets.add(mips.jal_target(w, pc))
+    for s in elf.data_sections():
+        blob = elf.data[s.off:s.off + s.size // 4 * 4]
+        targets.update(v for (v,) in struct.iter_unpack("<I", blob) if v % 4 == 0 and 0x100000 <= v < 0x1000000)
+    for s in elf.code_sections():
+        W = elf.words(s)
+        for i, w in enumerate(W):
+            if w != 0x03E00008 or i + 2 >= len(W): continue
+            j = i + 2
+            while j < len(W) and W[j] == 0: j += 1
+            pc = s.addr + 4 * j
+            if j < len(W) and pc % 8 == 0 and pc not in funcs and pc not in targets and plausible_entry(W, j): out[pc] = "tail"
+    return out
 
 def func_table(elf, funcs):
     """[(addr, size, source, section)] with size = distance to next function start."""
