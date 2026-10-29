@@ -3,11 +3,37 @@ import argparse, csv, json, os, sys
 from .elf import Elf
 from . import analyze as A, mips
 
+OVERRIDES = "symbols/overrides.txt"
 def load(path):
-    e = Elf(path); f = A.find_functions(e); t = A.func_table(e, f); return e, t
+    e = Elf(path); f = A.find_functions(e, A.load_overrides(OVERRIDES)); t = A.func_table(e, f); return e, t
 
-def names(e, t):
-    n = A.name_syscalls(e, t); n.update(A.name_sdk(e, t)); return n
+def named(e, t):
+    """{addr: (name, evidence)}"""
+    from . import ident
+    cache = os.path.join("build", "ident_%s.json" % e.sha256[:12])
+    if os.path.exists(cache) and os.path.getmtime(cache) > os.path.getmtime(__file__): return {int(k): tuple(v) for k, v in json.load(open(cache)).items()}
+    out = {a: (n, "syscall") for a, n in A.name_syscalls(e, t).items()}
+    out.update({a: (n, "sdk-string") for a, n in A.name_sdk(e, t).items()})
+    ver, lik = ident.identify(e, t); seen = {}
+    def is_thunk(a):
+        return e.read(a + 4, 4) == b"\0\0\0\0" and int.from_bytes(e.read(a, 4), "little") >> 26 == 2
+    for grp in (ver, lik):
+        for nm in list(grp): grp[nm] = [a for a in grp[nm] if not is_thunk(a)]
+    for conf, grp in (("verified", ver), ("likely", lik)):
+        for nm, addrs in grp.items():
+            for a in addrs:
+                seen[nm] = seen.get(nm, 0) + 1; out[a] = (nm if seen[nm] == 1 else "%s_%d" % (nm, seen[nm]), "behavior-" + conf)
+    out.update({a: (n, "manual") for a, n in A.load_overrides(OVERRIDES).items() if not n.startswith("FUN_")})
+    for a, size, _s, _sec in t:                      # `j target ; nop` where target is a named function
+        if size >= 8 and (a not in out or out[a][1] in ('thunk',)):
+            w0 = int.from_bytes(e.read(a, 4), "little"); w1 = int.from_bytes(e.read(a + 4, 4), "little")
+            if w0 >> 26 == 2 and w1 == 0:
+                tgt = ((a + 4) & 0xF0000000) | ((w0 & 0x3FFFFFF) << 2)
+                if tgt in out and out[tgt][1] != "thunk": out[a] = (out[tgt][0] + "_alias", "thunk")
+    os.makedirs("build", exist_ok=True); json.dump(out, open(cache, "w"))
+    return out
+
+def names(e, t): return {a: n for a, (n, _) in named(e, t).items()}
 
 def cmd_info(a):
     e = Elf(a.elf)
@@ -26,7 +52,7 @@ def cmd_info(a):
 
 def cmd_functions(a):
     e, t = load(a.elf); n = names(e, t)
-    w = csv.writer(open(a.o, "w", newline="") if a.o else sys.stdout)
+    w = csv.writer(open(a.o, "w", newline="") if a.o else sys.stdout, lineterminator="\n")
     w.writerow(["address", "size", "source", "section", "name"])
     for ad, sz, src, sec in t: w.writerow(["0x%08x" % ad, sz, src, sec, n.get(ad, "FUN_%08x" % ad)])
     if a.o: print("%d functions -> %s" % (len(t), a.o))
@@ -54,12 +80,12 @@ def cmd_embedded(a):
         print("file+0x%06x  size 0x%05x  e_type 0x%04x  machine %d" % (off, size, typ, mach))
 
 def cmd_symbols(a):
-    e, t = load(a.elf); n = names(e, t); os.makedirs(a.out, exist_ok=True)
+    e, t = load(a.elf); nv = named(e, t); n = {k: v[0] for k, v in nv.items()}; os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "functions.csv"), "w", newline="") as fh:
-        w = csv.writer(fh); w.writerow(["address", "size", "section", "name"])
+        w = csv.writer(fh, lineterminator="\n"); w.writerow(["address", "size", "section", "name"])
         for ad, sz, _s, sec in t: w.writerow(["0x%08x" % ad, sz, sec, n.get(ad, "FUN_%08x" % ad)])
     with open(os.path.join(a.out, "named.txt"), "w") as fh:
-        for ad, nm in sorted(n.items()): fh.write("%s = 0x%08x;\n" % (nm, ad))
+        for ad, (nm, ev) in sorted(nv.items()): fh.write("%s = 0x%08x; // %s\n" % (nm, ad, ev))
     print("%d functions, %d named -> %s/" % (len(t), len(n), a.out))
 
 def cmd_disasm(a):
@@ -89,6 +115,29 @@ def cmd_stubs(a):
         L.append("/* 0x%08x */\nINCLUDE_ASM(\"text\", %s);\n" % (ad, nm))
     open(a.o, "w").write("\n".join(L)); print("%d stubs -> %s" % (len(n), a.o))
 
+def cmd_ident(a):
+    from . import ident
+    e, t = load(a.elf); ver, lik = ident.identify(e, t)
+    for conf, g in (("verified", ver), ("likely", lik)):
+        for nm, addrs in sorted(g.items()):
+            for ad in addrs: print("0x%08x  %-8s %s" % (ad, nm, conf))
+
+def cmd_hubs(a):
+    """Most-called functions, flagged leaf/emulatable: the best next decompilation targets."""
+    from . import ident
+    import struct
+    e, t = load(a.elf); n = names(e, t); cg = A.call_graph(e, t); info = {x[0]: x for x in t}; rows = []
+    for ad, callers in cg.items():
+        _a, size, _src, sec = info[ad]; W = struct.unpack("<%dI" % (size // 4), e.read(ad, size))
+        leaf = not any(w >> 26 == 3 or (w & 0xFC00003F) == 0xC for w in W)
+        emu = leaf and all(ident.supported(w, ad + 4 * i) for i, w in enumerate(W))
+        rows.append((ad, n.get(ad, "FUN_%08x" % ad), len(callers), size, int(leaf), int(emu), sec))
+    rows.sort(key=lambda r: -r[2])
+    os.makedirs(os.path.dirname(a.o) or ".", exist_ok=True)
+    w = csv.writer(open(a.o, "w", newline=""), lineterminator="\n"); w.writerow(["address", "name", "callers", "size", "leaf", "emulatable", "section"])
+    for r in rows[:a.top]: w.writerow(["0x%08x" % r[0]] + list(r[1:]))
+    print("%d called functions; top %d -> %s  (leaf+emulatable in top: %d)" % (len(rows), min(a.top, len(rows)), a.o, sum(r[5] for r in rows[:a.top])))
+
 def cmd_ghidra(a):
     e, t = load(a.elf); mine = {x[0] for x in t}; g = set(A.gzf_functions(a.gzf)); hit = mine & g
     print("ps2an: %d   ghidra: %d   shared: %d" % (len(mine), len(g), len(hit)))
@@ -110,6 +159,8 @@ def main():
     s = add("strings", cmd_strings, "ASCII strings in data sections"); s.add_argument("--min", type=int, default=4)
     s = add("xrefs", cmd_xrefs, "functions referencing strings matching a regex"); s.add_argument("pattern")
     add("sdk", cmd_sdk, "SDK / kernel function names")
+    add("ident", cmd_ident, "name libc-like functions by running them in the emulator")
+    s = add("hubs", cmd_hubs, "most-called functions (decompilation targets)"); s.add_argument("-o", default="symbols/hubs.csv"); s.add_argument("--top", type=int, default=300)
     add("embedded", cmd_embedded, "embedded ELF modules (IRX/ERX)")
     s = add("symbols", cmd_symbols, "write symbols/ (public-safe)"); s.add_argument("-o", dest="out", default="symbols")
     s = add("disasm", cmd_disasm, "disassemble a function"); s.add_argument("target"); s.add_argument("-n", type=int, default=64)
