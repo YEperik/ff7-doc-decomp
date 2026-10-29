@@ -165,7 +165,8 @@ address,size,section,name
 0x00241338,32,.text,FUN_00241338
 0x00241358,32,.text,FUN_00241358
 0x00241378,72,.text,FUN_00241378
-0x002413c0,48,.text,FUN_002413c0
+0x002413c0,32,.text,has_flag_004b8b80
+0x002413e0,16,.text,set_gvar_0046b3d4
 0x002413f0,16,.text,FUN_002413f0
 0x00241400,16,.text,FUN_00241400
 0x00241410,16,.text,FUN_00241410
@@ -184,7 +185,10 @@ address,size,section,name
 0x00241900,128,.text,FUN_00241900
 0x00241980,16,.text,FUN_00241980
 0x00241990,72,.text,FUN_00241990
-0x002419d8,72,.text,FUN_002419d8
+0x002419d8,24,.text,get_flag_004b8cc8
+0x002419f0,16,.text,set_gvar_004b8d9c
+0x00241a00,16,.text,get_gvar_004b8d9c
+0x00241a10,16,.text,get_gvar_004b8d3c
 0x00241a20,40,.text,FUN_00241a20
 0x00241a48,16,.text,FUN_00241a48
 0x00241a58,40,.text,FUN_00241a58
@@ -561,7 +565,8 @@ address,size,section,name
 0x00252f08,600,.text,FUN_00252f08
 0x00253160,536,.text,FUN_00253160
 0x00253378,56,.text,FUN_00253378
-0x002533b0,152,.text,FUN_002533b0
+0x002533b0,64,.text,FUN_002533b0
+0x002533f0,88,.text,FUN_002533f0
 0x00253448,320,.text,FUN_00253448
 0x00253588,88,.text,FUN_00253588
 0x002535e0,32,.text,FUN_002535e0
@@ -2805,7 +2810,7 @@ address,size,section,name
 0x002e11d8,728,.text,FUN_002e11d8
 0x002e14b0,16,.text,FUN_002e14b0
 0x002e14c0,40,.text,FUN_002e14c0
-0x002e14e8,16,.text,FUN_002e14e8
+0x002e14e8,16,.text,get_gvar_0046de04
 0x002e14f8,56,.text,FUN_002e14f8
 0x002e1530,200,.text,FUN_002e1530
 0x002e15f8,64,.text,FUN_002e15f8
@@ -6159,7 +6164,7 @@ address,size,section,name
 0x003a8cf8,88,.text,FUN_003a8cf8
 0x003a8d50,88,.text,FUN_003a8d50
 0x003a8da8,16,.text,FUN_003a8da8
-0x003a8db8,16,.text,FUN_003a8db8
+0x003a8db8,16,.text,get_gvar_004efda0
 0x003a8dc8,136,.text,FUN_003a8dc8
 0x003a8e50,8,.text,FUN_003a8e50
 0x003a8e58,128,.text,FUN_003a8e58
@@ -6178,10 +6183,10 @@ address,size,section,name
 0x003aa020,88,.text,FUN_003aa020
 0x003aa078,32,.text,FUN_003aa078
 0x003aa098,40,.text,FUN_003aa098
-0x003aa0c0,40,.text,FUN_003aa0c0
+0x003aa0c0,40,.text,cstack_push_int
 0x003aa0e8,32,.text,FUN_003aa0e8
-0x003aa108,56,.text,FUN_003aa108
-0x003aa140,32,.text,FUN_003aa140
+0x003aa108,56,.text,cstack_drop
+0x003aa140,32,.text,cstack_pop
 0x003aa160,32,.text,FUN_003aa160
 0x003aa180,48,.text,FUN_003aa180
 0x003aa1b0,32,.text,FUN_003aa1b0
@@ -9208,7 +9213,7 @@ address,size,section,name
 0x00444e58,24,.text,FUN_00444e58
 0x00444e70,24,.text,FUN_00444e70
 0x00444e88,48,.text,FUN_00444e88
-0x00444eb8,16,.text,FUN_00444eb8
+0x00444eb8,16,.text,copy16
 0x00444ec8,104,.text,FUN_00444ec8
 0x00444f30,40,.text,FUN_00444f30
 0x00444f58,120,.text,FUN_00444f58
