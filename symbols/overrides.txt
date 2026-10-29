@@ -1,0 +1,3 @@
+setjmp  = 0x00447ef0; // saves s0-s7, fp, f24-f31, sp, ra into a0 and returns 0
+longjmp = 0x00447f48; // restores the same set from a0, returns a1 (1 if a1 == 0); was merged into setjmp by auto-detection
+FUN_00422f78 = 0x00422f78; // boundary only: new function starts right after the `j memcpy` thunk at 0x00422f70
