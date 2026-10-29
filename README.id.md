@@ -13,6 +13,7 @@ Butuh Python 3.9+, tanpa dependensi.
 ```sh
 cp /path/ke/SLPM_666.29 game/      # file milik Anda sendiri, tidak pernah di-commit
 make verify                        # cek SHA-256
+make test                          # uji C vs kode asli
 python -m ps2an info game/SLPM_666.29
 python -m ps2an functions game/SLPM_666.29 -o functions.csv
 ```
@@ -21,6 +22,7 @@ python -m ps2an functions game/SLPM_666.29 -o functions.csv
 
 - `ps2an/` toolkit analisis (info, functions, strings, xrefs, sdk, disasm, stubs)
 - `symbols/` alamat dan nama fungsi saja
+- `src/libc/` C setara untuk 12 fungsi libc, terverifikasi perilakunya
 - `docs/ANALYSIS.md` hasil analisis ELF
 
 ## Aturan penting
