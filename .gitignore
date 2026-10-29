@@ -1,0 +1,17 @@
+# Game data and derived material - never commit
+game/
+ghidra/
+private/
+build/
+dist/
+*.elf
+*.gzf
+*.bin
+*.iso
+*.irx
+*.erx
+SLPM_*
+SLUS_*
+SCES_*
+*.s
+__pycache__/
