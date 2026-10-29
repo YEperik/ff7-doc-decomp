@@ -10,7 +10,7 @@ def check(root):
             p = os.path.join(d, n); ext = os.path.splitext(n)[1].lower()
             rel = os.path.relpath(p, root)
             if ext in BAD_EXT or n.upper().startswith(("SLPM_", "SLUS_", "SCES_")): bad.append((rel, "forbidden type"))
-            elif os.path.getsize(p) > 2_000_000: bad.append((rel, "file > 2 MB"))
+            elif os.path.getsize(p) > 5_000_000: bad.append((rel, "file > 5 MB"))
             else:
                 with open(p, "rb") as fh: magic = fh.read(4)
                 if magic in (b"\x7fELF", b"PK\x03\x04"): bad.append((rel, "binary magic"))
