@@ -24,6 +24,8 @@ def pack(stage, out):
 def main():
     shutil.rmtree(DIST, ignore_errors=True); os.makedirs(STAGE)
     if os.path.exists(ELF):
+        for t in ("diff_test.py", "game_test.py"):        # never ship claims that do not pass
+            if subprocess.run([sys.executable, os.path.join("tests", t), ELF], cwd=ROOT, stdout=subprocess.DEVNULL).returncode: sys.exit("tests/%s failed" % t)
         run("symbols", ELF); run("stubs", ELF); run("hubs", ELF)            # refresh public metadata
     for r in PUBLIC: copy(r, STAGE)
     bad = check(STAGE)
@@ -40,7 +42,8 @@ def main():
     out("xrefs_sdk_libs.txt", "xrefs", ELF, r"lib[a-z0-9]+|sce[A-Z]|sq[A-Z]|\.irx|\.erx")
     out("xrefs_asset_paths.txt", "xrefs", ELF, r"^data/")
     if os.path.exists(GZF): out("ghidra_compare.txt", "ghidra", ELF, GZF)
-    with open(os.path.join(pv, "diff_test.txt"), "w") as fh: subprocess.run([sys.executable, "tests/diff_test.py", ELF], cwd=ROOT, stdout=fh)
+    for t in ("diff_test", "game_test"):
+        with open(os.path.join(pv, t + ".txt"), "w") as fh: subprocess.run([sys.executable, "tests/%s.py" % t, ELF], cwd=ROOT, stdout=fh)
     run("split", ELF, "-o", os.path.join(pv, "asm"))
     open(os.path.join(STAGE, "DEV_README.md"), "w").write(
         "# DEV PACKAGE - PRIVATE\n\nContains the game ELF, a Ghidra project and generated disassembly.\n"
