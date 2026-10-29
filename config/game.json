@@ -1,0 +1,10 @@
+{
+  "project": "ff7-doc-decomp",
+  "serial": "SLPM-66629",
+  "region": "JP",
+  "elf_name": "SLPM_666.29",
+  "elf_size": 4760568,
+  "sha256": "d715531d0713700ae1c7f9133cf98ee106d600c0a702f07c2f88705faf866d99",
+  "arch": "mips r5900 (ee), little-endian, ELF32",
+  "entry": "0x00100000"
+}
