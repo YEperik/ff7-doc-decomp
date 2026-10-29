@@ -22,7 +22,7 @@ python -m ps2an functions game/SLPM_666.29 -o functions.csv
 
 - `ps2an/` toolkit analisis (info, functions, strings, xrefs, sdk, disasm, stubs)
 - `symbols/` alamat dan nama fungsi saja
-- `src/libc/` C setara untuk 12 fungsi libc, terverifikasi perilakunya
+- `src/libc/` dan `src/game/` C untuk 12 fungsi libc dan 19 fungsi game, diuji terhadap kode asli
 - `docs/ANALYSIS.md` hasil analisis ELF
 
 ## Aturan penting
