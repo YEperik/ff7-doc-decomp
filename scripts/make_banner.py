@@ -1,53 +1,54 @@
-"""Builds two archives in dist/:
-   *-public.zip  safe for GitHub (tooling, docs, symbol metadata only)
-   *-dev.zip     private working copy (public + your ELF, Ghidra project, local analysis output)
-"""
-import os, shutil, subprocess, sys, zipfile
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
-from scripts.verify_public import check
-NAME = "ff7-doc-decomp"; DIST = os.path.join(ROOT, "dist"); STAGE = os.path.join(DIST, "_stage")
-PUBLIC = ["README.md", "README.id.md", "LICENSE", "LEGAL.md", "Makefile", ".gitignore", ".github", "config", "docs",
-          "assets", "ps2an", "scripts", "symbols", "src"]
-ELF = os.path.join(ROOT, "game", "SLPM_666.29"); GZF = os.path.join(ROOT, "ghidra", "SLPM_666_29.gzf")
+"""Generates assets/banner.png (original artwork, no third-party logos or game art)."""
+import math, numpy as np
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+S = 2; W, H = 1600 * S, 480 * S
+FONT = "/usr/share/fonts/truetype/google-fonts/"
+def f(name, size): return ImageFont.truetype(FONT + name, size * S)
 
-def run(*a): subprocess.run([sys.executable, "-m", "ps2an", *a], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-def copy(rel, dst):
-    s = os.path.join(ROOT, rel); d = os.path.join(dst, rel)
-    if os.path.isdir(s): shutil.copytree(s, d, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    else: os.makedirs(os.path.dirname(d), exist_ok=True); shutil.copy2(s, d)
-def pack(stage, out):
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, 9) as z:
-        for d, _, fs in os.walk(stage):
-            for f in sorted(fs): p = os.path.join(d, f); z.write(p, os.path.join(NAME, os.path.relpath(p, stage)))
-    print("%-34s %6.1f MB" % (os.path.basename(out), os.path.getsize(out) / 1e6))
+# background: deep blue-black -> crimson glow on the left
+y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+bg = np.zeros((H, W, 3), np.float32) + np.array([9, 10, 16], np.float32)
+cx, cy = 380 * S, 240 * S
+d = np.sqrt((x - cx) ** 2 + (y - cy) ** 2) / (520 * S)
+glow = np.clip(1 - d, 0, 1) ** 2.2
+bg += glow[..., None] * np.array([150, 18, 30], np.float32)
+bg += (np.clip(1 - np.sqrt((x - 1500 * S) ** 2 + (y - 40 * S) ** 2) / (500 * S), 0, 1) ** 2)[..., None] * np.array([10, 30, 60], np.float32)
+img = Image.fromarray(np.clip(bg, 0, 255).astype(np.uint8)).convert("RGBA")
 
-def main():
-    shutil.rmtree(DIST, ignore_errors=True); os.makedirs(STAGE)
-    if os.path.exists(ELF):
-        run("symbols", ELF); run("stubs", ELF)            # refresh public metadata
-    for r in PUBLIC: copy(r, STAGE)
-    bad = check(STAGE)
-    if bad: sys.exit("public package blocked: %s" % bad)
-    pack(STAGE, os.path.join(DIST, "%s-public.zip" % NAME))
-    # ---- dev ----
-    if not os.path.exists(ELF): print("no ELF in game/, dev package skipped"); return
-    os.makedirs(os.path.join(STAGE, "game")); shutil.copy2(ELF, os.path.join(STAGE, "game"))
-    if os.path.exists(GZF): os.makedirs(os.path.join(STAGE, "ghidra")); shutil.copy2(GZF, os.path.join(STAGE, "ghidra"))
-    pv = os.path.join(STAGE, "private"); os.makedirs(pv)
-    def out(name, *a):
-        with open(os.path.join(pv, name), "w") as fh: subprocess.run([sys.executable, "-m", "ps2an", *a], cwd=ROOT, check=True, stdout=fh)
-    out("strings.txt", "strings", ELF); out("embedded_modules.txt", "embedded", ELF)
-    out("xrefs_sdk_libs.txt", "xrefs", ELF, r"lib[a-z0-9]+|sce[A-Z]|sq[A-Z]|\.irx|\.erx")
-    out("xrefs_asset_paths.txt", "xrefs", ELF, r"^data/")
-    if os.path.exists(GZF): out("ghidra_compare.txt", "ghidra", ELF, GZF)
-    run("split", ELF, "-o", os.path.join(pv, "asm"))
-    open(os.path.join(STAGE, "DEV_README.md"), "w").write(
-        "# DEV PACKAGE - PRIVATE\n\nContains the game ELF, a Ghidra project and generated disassembly.\n"
-        "**Never upload, push or share this archive.**\n\n"
-        "- `game/` the ELF (git-ignored)\n- `ghidra/` .gzf project\n"
-        "- `private/` strings, xrefs, per-function asm (`private/asm`, same layout as `make split`)\n\n"
-        "Use: `make split` writes to `build/asm`; `INCLUDE_ASM` in `src/` reads from there.\n"
-        "Publish only the *-public.zip content.\n")
-    pack(STAGE, os.path.join(DIST, "%s-dev.zip" % NAME)); shutil.rmtree(STAGE)
+# hex grid (very subtle)
+grid = Image.new("RGBA", (W, H), (0, 0, 0, 0)); g = ImageDraw.Draw(grid); r = 34 * S
+for row in range(-1, int(H / (r * 1.5)) + 2):
+    for col in range(-1, int(W / (r * 1.74)) + 2):
+        px = col * r * math.sqrt(3) + (r * math.sqrt(3) / 2 if row % 2 else 0); py = row * r * 1.5
+        pts = [(px + r * math.cos(math.radians(60 * k + 30)), py + r * math.sin(math.radians(60 * k + 30))) for k in range(6)]
+        g.polygon(pts, outline=(255, 255, 255, 9))
+img = Image.alpha_composite(img, grid)
 
-if __name__ == "__main__": main()
+# emblem: ring + three fangs (Cerberus-inspired, abstract)
+em = Image.new("RGBA", (W, H), (0, 0, 0, 0)); e = ImageDraw.Draw(em)
+R = 170 * S
+for rad, w, a in ((R, 5, 255), (R + 22 * S, 2, 120), (R - 26 * S, 2, 120)):
+    e.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], outline=(225, 40, 52, a), width=w * S)
+def fang(ang, L=150, Wd=46):
+    a = math.radians(ang); ux, uy = math.cos(a), math.sin(a); px, py = -uy, ux
+    base = 18 * S; tip = L * S; w = Wd * S
+    pts = [(cx + ux * base + px * w * .5, cy + uy * base + py * w * .5), (cx + ux * tip * .78 + px * w * .22, cy + uy * tip * .78 + py * w * .22),
+           (cx + ux * (tip + 38 * S), cy + uy * (tip + 38 * S)), (cx + ux * tip * .9 - px * w * .05, cy + uy * tip * .9 - py * w * .05),
+           (cx + ux * base - px * w * .5, cy + uy * base - py * w * .5)]
+    return pts
+for ang in (-90, 30, 150):
+    e.polygon(fang(ang), fill=(236, 236, 242, 255))
+    e.polygon(fang(ang + 60, 70, 30), fill=(225, 40, 52, 255))
+e.ellipse([cx - 22 * S, cy - 22 * S, cx + 22 * S, cy + 22 * S], fill=(225, 40, 52, 255))
+em_glow = em.filter(ImageFilter.GaussianBlur(14 * S))
+img = Image.alpha_composite(img, em_glow); img = Image.alpha_composite(img, em)
+
+# text
+t = ImageDraw.Draw(img); tx = 700 * S
+t.text((tx, 108 * S), "FF7-DoC", font=f("Poppins-Bold.ttf", 132), fill=(244, 244, 248, 255))
+t.text((tx + 4 * S, 262 * S), "DECOMPILATION", font=f("Poppins-Bold.ttf", 54), fill=(225, 40, 52, 255))
+t.line([(tx + 6 * S, 338 * S), (tx + 640 * S, 338 * S)], fill=(255, 255, 255, 70), width=2 * S)
+mono = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 26 * S)
+t.text((tx + 6 * S, 358 * S), "SLPM-66629   |   PS2   |   MIPS R5900   |   Japan", font=mono, fill=(170, 176, 192, 255))
+img.convert("RGB").resize((W // S, H // S), Image.LANCZOS).save("assets/banner.png", optimize=True)
+print("assets/banner.png")
