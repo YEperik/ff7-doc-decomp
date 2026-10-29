@@ -1,7 +1,8 @@
 ELF ?= game/SLPM_666.29
 PY  ?= python3
 
-.PHONY: verify info symbols stubs split ghidra-check release clean
+.PHONY: test verify info symbols stubs split ghidra-check release clean
+test:    ; $(PY) tests/diff_test.py $(ELF) && $(PY) tests/game_test.py $(ELF)
 verify:  ; $(PY) -m ps2an verify $(ELF)
 info:    ; $(PY) -m ps2an info $(ELF)
 symbols: ; $(PY) -m ps2an symbols $(ELF)
