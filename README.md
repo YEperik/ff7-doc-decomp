@@ -13,9 +13,10 @@
 |---|---|
 | Game ID | SLPM-66629 (Japan) |
 | Target | `SLPM_666.29`, MIPS R5900, ELF32 |
-| Functions found | 12,909 |
-| Named | 62 |
-| C equivalents (verified, 100% of tests) | 12 libc functions |
+| Functions found | 12,916 |
+| Named | 74 |
+| Game functions in C (tested vs original) | 19 |
+| libc functions in C (tested vs original) | 12 |
 | Byte-matching | 0 (needs `ee-gcc`) |
 
 ## Quick start
@@ -30,7 +31,7 @@ cp /path/to/SLPM_666.29 game/
 make verify
 
 # 3. Test the C equivalents against the original code
-make test
+make test                    # libc + game functions
 
 # 4. Analyze
 python -m ps2an info game/SLPM_666.29
@@ -62,7 +63,7 @@ python -m ps2an disasm game/SLPM_666.29 sceGsSyncPath -n 20
 ```
 ps2an/      analysis toolkit
 symbols/    functions.csv, named.txt (addresses and names only)
-src/        headers, stubs, libc C equivalents
+src/        headers, stubs, libc and game C
 tests/      differential test (C vs original)
 config/     game identity (SHA-256)
 docs/       ELF analysis
@@ -72,8 +73,8 @@ game/       your files, git-ignored
 
 ## Contributing
 
-1. Pick a function from `symbols/functions.csv`.
-2. Write C that matches the local asm.
+1. Pick a function from `symbols/hubs.csv`.
+2. Write C in `src/game/` and add it to `tests/game_test.py`. It must pass with 100% coverage.
 3. Open a PR with C only. Never include asm, binaries, or assets.
 
 ## Legal
