@@ -2,7 +2,17 @@
 import re, struct, bisect
 from . import mips
 
-def find_functions(elf):
+def load_overrides(path):
+    """symbols/overrides.txt lines: name = 0xADDR; // evidence  ->  {addr: name}"""
+    import os
+    out = {}
+    if path and os.path.exists(path):
+        for ln in open(path):
+            m = re.match(r"\s*(\w+)\s*=\s*(0x[0-9a-fA-F]+)\s*;", ln)
+            if m: out[int(m.group(2), 16)] = m.group(1)
+    return out
+
+def find_functions(elf, extra=()):
     """Return {addr: source} using jal targets + prologue-after-return heuristic."""
     ranges = [(s.addr, s.addr + s.size) for s in elf.code_sections()]
     inr = lambda a: a % 4 == 0 and any(lo <= a < hi for lo, hi in ranges)
@@ -22,6 +32,7 @@ def find_functions(elf):
                 elif i >= 2 and W[i - 2] == 0x03E00008:
                     funcs.setdefault(pc, "prologue")
         funcs.setdefault(base, "section")
+    for a in extra: funcs[a] = "manual"
     return dict(sorted(funcs.items()))
 
 def func_table(elf, funcs):
@@ -125,3 +136,14 @@ def name_syscalls(elf, table):
                 if 0x0000000C in [x & 0xFC00003F for x in W] and n in SYSCALLS:
                     out[a] = SYSCALLS[n] + ("_neg" if mips.s16(w & 0xFFFF) < 0 else "")
     return out
+
+def call_graph(elf, table):
+    """{callee: set(callers)} from jal (and `j` tail calls into another function)."""
+    starts = [t[0] for t in table]; sset = set(starts); cg = {}
+    for a, size, _s, _sec in table:
+        for i in range(size // 4):
+            pc = a + 4 * i; w = int.from_bytes(elf.read(pc, 4), "little")
+            if w >> 26 == 3 or (w >> 26 == 2):
+                t = mips.jal_target(w, pc)
+                if t in sset and (w >> 26 == 3 or not (a <= t < a + size)): cg.setdefault(t, set()).add(a)
+    return cg
