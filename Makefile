@@ -1,7 +1,9 @@
 ELF ?= game/SLPM_666.29
 PY  ?= python3
 
-.PHONY: test verify info symbols stubs split ghidra-check release clean
+.PHONY: progress milestone test verify info symbols stubs split ghidra-check release clean
+progress: ; $(PY) -m ps2an progress
+milestone: ; $(PY) -m ps2an progress --record "$(LABEL)"   # usage: make milestone LABEL="..."
 test:    ; $(PY) tests/diff_test.py $(ELF) && $(PY) tests/game_test.py $(ELF)
 verify:  ; $(PY) -m ps2an verify $(ELF)
 info:    ; $(PY) -m ps2an info $(ELF)
