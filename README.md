@@ -66,17 +66,6 @@ python -m ps2an disasm game/SLPM_666.29 lock_acquire -n 20
 3. Return value, **all** memory and the sequence of calls to other functions must match; the original must be 100% covered.
 4. `make progress` updates the numbers above.
 
-## Repository model: public vs private
-
-| | Public repo (this) | Private dev package |
-|---|---|---|
-| Tools, docs, tests | yes | yes |
-| Symbols (address, size, name) | yes | yes |
-| C reconstructions | yes | yes |
-| Game ELF, Ghidra project | **never** | yes |
-| Disassembly, strings, asm | **never** | yes |
-
-`make release` builds both archives in `dist/`: `*-public.zip` (push this) and `*-dev.zip` (keep private). `scripts/verify_public.py` blocks binaries, assembly listings and oversized files, and runs in CI.
 
 ## Layout
 
