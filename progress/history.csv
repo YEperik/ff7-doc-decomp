@@ -1,0 +1,5 @@
+milestone,date,functions_done,functions_total,bytes_done,bytes_total,hubs_done
+Analysis tools & symbol map,2026-10-29,0,12916,0,4390020,0
+libc cluster verified,2026-10-29,15,12916,3528,4390020,8
+19 leaf functions,2026-10-29,34,12916,4168,4390020,22
+Lock queue + mocked calls,2026-10-30,36,12916,4520,4390020,24
