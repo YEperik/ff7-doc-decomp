@@ -126,6 +126,16 @@ def cmd_ident(a):
         for nm, addrs in sorted(g.items()):
             for ad in addrs: print("0x%08x  %-8s %s" % (ad, nm, conf))
 
+def cmd_progress(a):
+    from . import progress as P
+    m = P.compute(a.root)
+    if a.record: P.record(a.root, m, a.record, a.date)
+    if a.check:
+        bad = P.check(a.root, m)
+        print("progress files in sync" if not bad else "OUT OF DATE (run: python -m ps2an progress): " + ", ".join(bad)); sys.exit(1 if bad else 0)
+    P.write_all(a.root, m)
+    print("functions %d/%d (%.2f%%)  bytes %.2f%%  hubs %d/%d" % (m["functions_done"], m["functions_total"], m["functions_pct"], m["bytes_pct"], m["hubs_done"], m["hubs_total"]))
+
 def cmd_tail(a):
     """Research: low-confidence tiny-function candidates (not part of the default function list)."""
     e = Elf(a.elf); f = A.find_functions(e, A.load_overrides(OVERRIDES), tail=True); n = 0
@@ -172,10 +182,20 @@ def main():
     s = add("xrefs", cmd_xrefs, "functions referencing strings matching a regex"); s.add_argument("pattern")
     add("sdk", cmd_sdk, "SDK / kernel function names")
     add("ident", cmd_ident, "name libc-like functions by running them in the emulator")
+    s = add("progress", cmd_progress, "update progress files from public metadata", elf=False); s.add_argument("--root", default="."); s.add_argument("--record", metavar="LABEL"); s.add_argument("--date"); s.add_argument("--check", action="store_true")
     s = add("tail", cmd_tail, "research: tiny-function candidates (unverified)"); s.add_argument("-o", default="build/tail_candidates.txt")
     s = add("hubs", cmd_hubs, "most-called functions (decompilation targets)"); s.add_argument("-o", default="symbols/hubs.csv"); s.add_argument("--top", type=int, default=300)
     add("embedded", cmd_embedded, "embedded ELF modules (IRX/ERX)")
     s = add("symbols", cmd_symbols, "write symbols/ (public-safe)"); s.add_argument("-o", dest="out", default="symbols")
+    s = add("disasm", cmd_disasm, "disassemble a function"); s.add_argument("target"); s.add_argument("-n", type=int, default=64)
+    s = add("split", cmd_split, "write per-function .s files (local only)"); s.add_argument("-o", dest="out", default="build/asm")
+    s = add("stubs", cmd_stubs, "write C stubs for named functions"); s.add_argument("-o", default="src/stubs/sdk_stubs.c")
+    s = add("ghidra", cmd_ghidra, "compare against a Ghidra .gzf"); s.add_argument("gzf")
+    s = add("verify", cmd_verify, "check ELF sha256 against config"); s.add_argument("--config", default="config/game.json")
+    a = p.parse_args(); a.fn(a)
+
+if __name__ == "__main__": main()
+s", cmd_symbols, "write symbols/ (public-safe)"); s.add_argument("-o", dest="out", default="symbols")
     s = add("disasm", cmd_disasm, "disassemble a function"); s.add_argument("target"); s.add_argument("-n", type=int, default=64)
     s = add("split", cmd_split, "write per-function .s files (local only)"); s.add_argument("-o", dest="out", default="build/asm")
     s = add("stubs", cmd_stubs, "write C stubs for named functions"); s.add_argument("-o", default="src/stubs/sdk_stubs.c")
