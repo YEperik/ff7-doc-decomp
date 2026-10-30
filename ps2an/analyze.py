@@ -219,21 +219,3 @@ def call_graph(elf, table):
                 t = mips.jal_target(w, pc)
                 if t in sset and (w >> 26 == 3 or not (a <= t < a + size)): cg.setdefault(t, set()).add(a)
     return cg
-f.read(a, size))
-        for w in W:
-            if (w >> 26) == 9 and (w >> 21) & 31 == 0 and (w >> 16) & 31 == 3:   # addiu v1,zero,N
-                n = abs(mips.s16(w & 0xFFFF))
-                if 0x0000000C in [x & 0xFC00003F for x in W] and n in SYSCALLS:
-                    out[a] = SYSCALLS[n] + ("_neg" if mips.s16(w & 0xFFFF) < 0 else "")
-    return out
-
-def call_graph(elf, table):
-    """{callee: set(callers)} from jal (and `j` tail calls into another function)."""
-    starts = [t[0] for t in table]; sset = set(starts); cg = {}
-    for a, size, _s, _sec in table:
-        for i in range(size // 4):
-            pc = a + 4 * i; w = int.from_bytes(elf.read(pc, 4), "little")
-            if w >> 26 == 3 or (w >> 26 == 2):
-                t = mips.jal_target(w, pc)
-                if t in sset and (w >> 26 == 3 or not (a <= t < a + size)): cg.setdefault(t, set()).add(a)
-    return cg

@@ -195,12 +195,3 @@ def main():
     a = p.parse_args(); a.fn(a)
 
 if __name__ == "__main__": main()
-s", cmd_symbols, "write symbols/ (public-safe)"); s.add_argument("-o", dest="out", default="symbols")
-    s = add("disasm", cmd_disasm, "disassemble a function"); s.add_argument("target"); s.add_argument("-n", type=int, default=64)
-    s = add("split", cmd_split, "write per-function .s files (local only)"); s.add_argument("-o", dest="out", default="build/asm")
-    s = add("stubs", cmd_stubs, "write C stubs for named functions"); s.add_argument("-o", default="src/stubs/sdk_stubs.c")
-    s = add("ghidra", cmd_ghidra, "compare against a Ghidra .gzf"); s.add_argument("gzf")
-    s = add("verify", cmd_verify, "check ELF sha256 against config"); s.add_argument("--config", default="config/game.json")
-    a = p.parse_args(); a.fn(a)
-
-if __name__ == "__main__": main()

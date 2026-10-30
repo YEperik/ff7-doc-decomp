@@ -27,6 +27,8 @@ class CPU:
     def __init__(self, code_reader, mem=None):
         self.r = [0] * 32; self.u = [0] * 32; self.hi = self.lo = 0; self.pc = 0
         self.fetch = code_reader; self.mem = mem or Mem(); self.steps = 0; self.seen = set()
+        self.hooks = {}          # guest address -> callable(cpu): replaces the whole function (call + return)
+        self.on_break = None     # callable(cpu) invoked by `break`; execution then continues
 
     def run(self, entry, args=(), ra=0xDEAD0000, sp=0x7F000000, limit=200000):
         self.r = [0] * 32; self.u = [0] * 32; self.pc = entry; self.r[31] = ra; self.r[29] = sp
@@ -41,6 +43,10 @@ class CPU:
         return self.r[2]
 
     def step(self):
+        if self.pc in self.hooks:                          # host-implemented callee: run it, then return to $ra
+            h = self.hooks[self.pc]; h(self); self.r[0] = 0; self.pc = self.r[31] & M32; self.steps += 1
+            if self.pc == self.stop: raise Stop
+            return
         pc = self.pc; w = self.fetch(pc); self.steps += 1; self.seen.add(pc)
         npc = pc + 4; delay = None; self.pc = npc      # default fallthrough
         self.exec(w, pc)
@@ -118,6 +124,9 @@ class CPU:
             elif f == 62: W(rd, B >> (sa + 32))
             elif f == 63: W(rd, s64(B) >> (sa + 32))
             elif f == 15: pass
+            elif f == 13:
+                if self.on_break is None: raise Unsupported("break @%x" % pc)
+                self.on_break(self)
             else: raise Unsupported("special %d @%x" % (f, pc))
         elif op == 1:
             a = s64(A); t = pc + 4 + (simm << 2)
@@ -125,7 +134,8 @@ class CPU:
             if c is None: raise Unsupported("regimm %d" % rt)
             self.br = (t, c, rt in (2, 3))
         elif op == 2: self.br = (((pc + 4) & 0xF0000000) | ((w & 0x3FFFFFF) << 2), True, False)
-        elif op == 3: raise Unsupported("jal (non-leaf) @%x" % pc)
+        elif op == 3:
+            W(31, pc + 8); self.br = (((pc + 4) & 0xF0000000) | ((w & 0x3FFFFFF) << 2), True, False)
         elif op in (4, 5, 6, 7, 20, 21, 22, 23):
             t = pc + 4 + (simm << 2); k = op & 7 if op < 20 else op - 16
             c = {4: A == B, 5: A != B, 6: s64(A) <= 0, 7: s64(A) > 0}[k]
