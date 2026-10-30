@@ -31,10 +31,6 @@ python -m ps2an functions game/SLPM_666.29 -o functions.csv
 
 Persentase decompile dihitung otomatis dari metadata publik: [docs/PROGRESS.md](docs/PROGRESS.md). Fungsi dihitung selesai hanya jika C-nya lolos uji diferensial terhadap kode asli. Perbarui dengan `make progress`.
 
-## Dev vs publik
-
-`make release` membuat dua ZIP di `dist/`: `*-public.zip` (boleh di-push) dan `*-dev.zip` (berisi ELF, Ghidra, asm; jangan pernah dipublikasikan). `scripts/verify_public.py` memblokir biner, listing assembly, dan string panjang.
-
 ## Aturan penting
 
 - Repo ini **tidak berisi** kode, aset, atau disassembly game.
