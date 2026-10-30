@@ -26,7 +26,6 @@
 Details and history: [docs/PROGRESS.md](docs/PROGRESS.md)
 <!-- PROGRESS:END -->
 
-A function counts as **decompiled** only when its C passes differential tests against the original code (`make test`). Byte-matching builds need `ee-gcc` and are not done yet.
 
 ## Project
 
