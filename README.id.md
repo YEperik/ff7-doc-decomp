@@ -1,6 +1,8 @@
 <p align="center"><img src="assets/banner.png" alt="FF7-DoC Decompilation"></p>
 
-<p align="center"><a href="README.md">English</a> · <a href="docs/ANALYSIS.md">Analisis</a> · <a href="LEGAL.md">Legal</a></p>
+<p align="center"><img src="assets/badge-decompiled.svg" alt="decompiled"></p>
+
+<p align="center"><a href="README.md">English</a> · <a href="docs/PROGRESS.md">Progres</a> · <a href="docs/ANALYSIS.md">Analisis</a> · <a href="LEGAL.md">Legal</a></p>
 
 ---
 
@@ -24,6 +26,14 @@ python -m ps2an functions game/SLPM_666.29 -o functions.csv
 - `symbols/` alamat dan nama fungsi saja
 - `src/libc/` dan `src/game/` C untuk 12 fungsi libc dan 19 fungsi game, diuji terhadap kode asli
 - `docs/ANALYSIS.md` hasil analisis ELF
+
+## Progres
+
+Persentase decompile dihitung otomatis dari metadata publik: [docs/PROGRESS.md](docs/PROGRESS.md). Fungsi dihitung selesai hanya jika C-nya lolos uji diferensial terhadap kode asli. Perbarui dengan `make progress`.
+
+## Dev vs publik
+
+`make release` membuat dua ZIP di `dist/`: `*-public.zip` (boleh di-push) dan `*-dev.zip` (berisi ELF, Ghidra, asm; jangan pernah dipublikasikan). `scripts/verify_public.py` memblokir biner, listing assembly, dan string panjang.
 
 ## Aturan penting
 
