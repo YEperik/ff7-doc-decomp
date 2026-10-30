@@ -7,7 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.ins
 from scripts.verify_public import check
 NAME = "ff7-doc-decomp"; DIST = os.path.join(ROOT, "dist"); STAGE = os.path.join(DIST, "_stage")
 PUBLIC = ["README.md", "README.id.md", "LICENSE", "LEGAL.md", "Makefile", ".gitignore", ".github", "config", "docs",
-          "assets", "ps2an", "scripts", "symbols", "src", "tests"]
+          "assets", "ps2an", "scripts", "symbols", "src", "tests", "progress"]
 ELF = os.path.join(ROOT, "game", "SLPM_666.29"); GZF = os.path.join(ROOT, "ghidra", "SLPM_666_29.gzf")
 
 def run(*a): subprocess.run([sys.executable, "-m", "ps2an", *a], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
@@ -26,7 +26,8 @@ def main():
     if os.path.exists(ELF):
         for t in ("diff_test.py", "game_test.py"):        # never ship claims that do not pass
             if subprocess.run([sys.executable, os.path.join("tests", t), ELF], cwd=ROOT, stdout=subprocess.DEVNULL).returncode: sys.exit("tests/%s failed" % t)
-        run("symbols", ELF); run("stubs", ELF); run("hubs", ELF)            # refresh public metadata
+        run("symbols", ELF); run("stubs", ELF); run("hubs", ELF)
+        subprocess.run([sys.executable, "-m", "ps2an", "progress"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)   # README, SVG, history stay in sync            # refresh public metadata
     for r in PUBLIC: copy(r, STAGE)
     bad = check(STAGE)
     if bad: sys.exit("public package blocked: %s" % bad)
