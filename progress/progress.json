@@ -1,0 +1,53 @@
+{
+  "functions_done": 36,
+  "functions_total": 12916,
+  "functions_pct": 0.2787240631774543,
+  "bytes_done": 4520,
+  "bytes_total": 4390020,
+  "bytes_pct": 0.10296080655668995,
+  "identified_only": 49,
+  "hubs_done": 24,
+  "hubs_total": 300,
+  "hubs_pct": 8.0,
+  "callsites_done": 3660,
+  "callsites_total": 13352,
+  "callsites_pct": 27.411623726782505,
+  "sections": {
+    ".text": {
+      "done": 35,
+      "total": 9646,
+      "bytes_done": 4512,
+      "bytes_total": 3541268
+    },
+    ".kel_extended_program_section": {
+      "done": 1,
+      "total": 1864,
+      "bytes_done": 8,
+      "bytes_total": 518016
+    },
+    ".kel_net": {
+      "done": 0,
+      "total": 1101,
+      "bytes_done": 0,
+      "bytes_total": 212224
+    },
+    ".kel_draw_section": {
+      "done": 0,
+      "total": 211,
+      "bytes_done": 0,
+      "bytes_total": 53040
+    },
+    ".kel_title": {
+      "done": 0,
+      "total": 82,
+      "bytes_done": 0,
+      "bytes_total": 34304
+    },
+    ".kel_us_overwrap_extended_program_section": {
+      "done": 0,
+      "total": 12,
+      "bytes_done": 0,
+      "bytes_total": 31168
+    }
+  }
+    }
