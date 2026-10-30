@@ -1,6 +1,15 @@
 """Fails if a directory contains anything that must not be published."""
-import os, sys
+import os, re, sys
 BAD_EXT = {".elf", ".gzf", ".bin", ".iso", ".irx", ".erx", ".s", ".sdata", ".pak"}
+TEXT_EXT = {".c", ".h", ".py", ".md", ".txt", ".json", ".csv", ".yml", ".mk", ""}
+LISTING = re.compile(r"(\.word\s+0x[0-9a-fA-F]{8})|(/\*\s*[0-9a-fA-F]{6,8}\s+[0-9a-fA-F]{8}\s*\*/)|((^|\s)[0-9a-f]{8}:\s+[0-9a-f]{8}\s+[a-z]{2,7}\s+\$)", re.M)
+LONGSTR = re.compile(r'"[^"\n]{40,}"')
+def text_problem(txt, ext):
+    """Instruction listings and long string literals are signs of copied game material."""
+    if ext == ".py": return None                      # tool sources may contain format strings and docs
+    if LISTING.search(txt): return "looks like a disassembly listing"
+    if ext in (".c", ".h") and LONGSTR.search(txt): return "long string literal (game text?)"
+    return None
 SKIP = {".git", "__pycache__"}
 def check(root):
     bad = []
@@ -14,6 +23,9 @@ def check(root):
             else:
                 with open(p, "rb") as fh: magic = fh.read(4)
                 if magic in (b"\x7fELF", b"PK\x03\x04"): bad.append((rel, "binary magic"))
+                elif ext in TEXT_EXT:
+                    txt = open(p, errors="ignore").read(); why = text_problem(txt, ext)
+                    if why: bad.append((rel, why))
     return bad
 if __name__ == "__main__":
     b = check(sys.argv[1] if len(sys.argv) > 1 else ".")
