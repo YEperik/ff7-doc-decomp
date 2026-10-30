@@ -6,3 +6,5 @@ FUN_00241a00 = 0x00241a00; // boundary only
 FUN_00241a10 = 0x00241a10; // boundary only
 FUN_002413e0 = 0x002413e0; // boundary only
 FUN_002533f0 = 0x002533f0; // boundary only
+DIntr = 0x0044cb68; // reads COP0 Status (EIE bit), executes `di` until it takes effect, returns the old state
+EIntr = 0x0044cbb0; // reads COP0 Status, executes `ei`, returns the state
