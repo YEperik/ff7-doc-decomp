@@ -13,7 +13,7 @@ Toolkit decompile dan peta simbol untuk **FF7 DoC** (PS2, SLPM-66629, Jepang).
 Butuh Python 3.9+, tanpa dependensi.
 
 ```sh
-cp /path/ke/SLPM_666.29 game/      # file milik Anda sendiri, tidak pernah di-commit
+cp /path/ke/SLPM_666.29 game/      # salinan milik Anda sendiri
 make verify                        # cek SHA-256
 make test                          # uji C vs kode asli
 python -m ps2an info game/SLPM_666.29
@@ -31,10 +31,9 @@ python -m ps2an functions game/SLPM_666.29 -o functions.csv
 
 Persentase decompile dihitung otomatis dari metadata publik: [docs/PROGRESS.md](docs/PROGRESS.md). Fungsi dihitung selesai hanya jika C-nya lolos uji diferensial terhadap kode asli. Perbarui dengan `make progress`.
 
-## Aturan penting
+## Kontribusi
 
-- Repo ini **tidak berisi** kode, aset, atau disassembly game.
-- Asm dibuat **lokal** (`make split`) dan sudah di-ignore git.
-- PR hanya boleh berisi kode C, bukan asm atau biner.
+- Pilih fungsi dari `symbols/hubs.csv`, tulis C-nya di `src/game/`, pastikan `make test` lulus, lalu jalankan `make progress`.
+- PR hanya berisi C dan tes.
 
 Lihat [LEGAL.md](LEGAL.md). Tooling berlisensi MIT.

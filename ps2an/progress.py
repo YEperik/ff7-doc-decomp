@@ -19,18 +19,22 @@ def compute(root=".", decomp=None, libc=True):
     done = set(decomp if decomp is not None else _load_manifest(os.path.join(root, "src/game/decomp.txt")))
     if libc: done |= {a for a, (_n, ev) in named.items() if ev == "behavior-verified"}       # libc functions with tested C in src/libc
     ident = {a for a in named if a not in done}
+    mpath = os.path.join(root, "src/game/matched.txt")
+    matched = set(_load_manifest(mpath)) & done if os.path.exists(mpath) and decomp is None else set()
     tot_f, tot_b = len(funcs), sum(s for _, s, _ in funcs)
     df = [f for f in funcs if f[0] in done]; db = sum(s for _, s, _ in df)
     sec = {}
     for a, s, name in funcs:
         d = sec.setdefault(name, [0, 0, 0, 0]); d[1] += 1; d[3] += s
         if a in done: d[0] += 1; d[2] += s
+    mf = [f for f in funcs if f[0] in matched]; mb = sum(x[1] for x in mf)
     hubs = []
     p = os.path.join(root, "symbols/hubs.csv")
     if os.path.exists(p): hubs = [(int(r["address"], 16), int(r["callers"])) for r in csv.DictReader(open(p))]
     hd = [h for h in hubs if h[0] in done]
     return {"functions_done": len(df), "functions_total": tot_f, "functions_pct": 100.0 * len(df) / tot_f,
             "bytes_done": db, "bytes_total": tot_b, "bytes_pct": 100.0 * db / tot_b,
+            "matched_done": len(mf), "matched_bytes": mb, "matched_pct": 100.0 * mb / tot_b,
             "identified_only": len(ident), "hubs_done": len(hd), "hubs_total": len(hubs),
             "hubs_pct": 100.0 * len(hd) / max(1, len(hubs)),
             "callsites_done": sum(c for _, c in hd), "callsites_total": sum(c for _, c in hubs),
@@ -52,6 +56,7 @@ def badge(label, value, color):
 def card(m):
     rows = [("Functions", m["functions_pct"], "%d / %d" % (m["functions_done"], m["functions_total"])),
             ("Code bytes", m["bytes_pct"], "%s / %s" % (format(m["bytes_done"], ","), format(m["bytes_total"], ","))),
+            ("Byte-exact", m["matched_pct"], "%d functions" % m["matched_done"]),
             ("Top-300 hubs", m["hubs_pct"], "%d / %d" % (m["hubs_done"], m["hubs_total"])),
             ("Hub call sites", m["callsites_pct"], "%s / %s" % (format(m["callsites_done"], ","), format(m["callsites_total"], ",")))]
     o = ['<svg xmlns="http://www.w3.org/2000/svg" width="760" height="%d" font-family="Verdana,DejaVu Sans,sans-serif">' % (64 + 34 * len(rows)),
@@ -77,12 +82,12 @@ def read_history(root):
 
 def record(root, m, label, date=None):
     rows = read_history(root); date = date or datetime.date.today().isoformat()
-    rows = [r for r in rows if r["milestone"] != label]
+    rows = [dict(r, matched_done=r.get("matched_done") or 0) for r in rows if r["milestone"] != label]
     rows.append({"milestone": label, "date": date, "functions_done": m["functions_done"], "functions_total": m["functions_total"],
-                 "bytes_done": m["bytes_done"], "bytes_total": m["bytes_total"], "hubs_done": m["hubs_done"]})
+                 "bytes_done": m["bytes_done"], "bytes_total": m["bytes_total"], "hubs_done": m["hubs_done"], "matched_done": m["matched_done"]})
     os.makedirs(os.path.join(root, "progress"), exist_ok=True)
     with open(os.path.join(root, HIST), "w", newline="") as fh:
-        w = csv.DictWriter(fh, ["milestone", "date", "functions_done", "functions_total", "bytes_done", "bytes_total", "hubs_done"], lineterminator="\n")
+        w = csv.DictWriter(fh, ["milestone", "date", "functions_done", "functions_total", "bytes_done", "bytes_total", "hubs_done", "matched_done"], lineterminator="\n")
         w.writeheader(); w.writerows(rows)
 
 def render_markdown(root, m):
@@ -91,6 +96,7 @@ def render_markdown(root, m):
          "| Metric | Done | Total | % |", "|---|---:|---:|---:|",
          "| Functions | %d | %d | %.2f%% |" % (m["functions_done"], m["functions_total"], m["functions_pct"]),
          "| Code bytes | %s | %s | %.2f%% |" % (format(m["bytes_done"], ","), format(m["bytes_total"], ","), m["bytes_pct"]),
+         "| Byte-exact functions | %d | %d | %.2f%% (bytes) |" % (m["matched_done"], m["functions_total"], m["matched_pct"]),
          "| Top-300 most-called functions | %d | %d | %.1f%% |" % (m["hubs_done"], m["hubs_total"], m["hubs_pct"]),
          "| Call sites into those hubs | %s | %s | %.1f%% |" % (format(m["callsites_done"], ","), format(m["callsites_total"], ","), m["callsites_pct"]),
          "", "Identified (named, not yet decompiled): **%d** functions." % m["identified_only"], "",
@@ -99,8 +105,8 @@ def render_markdown(root, m):
         L.append("| `%s` | %d / %d | %s / %s (%.2f%%) |" % (k, v["done"], v["total"], format(v["bytes_done"], ","), format(v["bytes_total"], ","), 100.0 * v["bytes_done"] / max(1, v["bytes_total"])))
     h = read_history(root)
     if h:
-        L += ["", "## History", "", "| Milestone | Date | Functions | Code bytes | Hubs |", "|---|---|---:|---:|---:|"]
-        for r in h: L.append("| %s | %s | %s | %.2f%% | %s |" % (r["milestone"], r["date"], r["functions_done"], 100.0 * int(r["bytes_done"]) / int(r["bytes_total"]), r["hubs_done"]))
+        L += ["", "## History", "", "| Milestone | Date | Functions | Code bytes | Byte-exact | Hubs |", "|---|---|---:|---:|---:|---:|"]
+        for r in h: L.append("| %s | %s | %s | %.2f%% | %s | %s |" % (r["milestone"], r["date"], r["functions_done"], 100.0 * int(r["bytes_done"]) / int(r["bytes_total"]), r.get("matched_done") or 0, r["hubs_done"]))
     return "\n".join(L) + "\n"
 
 START, END = "<!-- PROGRESS:START -->", "<!-- PROGRESS:END -->"
@@ -109,6 +115,7 @@ def readme_block(m):
         "| | Done | Total |", "|---|---:|---:|",
         "| Functions | %d (%.2f%%) | %d |" % (m["functions_done"], m["functions_pct"], m["functions_total"]),
         "| Code bytes | %.2f%% | %s |" % (m["bytes_pct"], format(m["bytes_total"], ",")),
+        "| Byte-exact | %d (%.2f%% of bytes) | %d |" % (m["matched_done"], m["matched_pct"], m["functions_total"]),
         "| Most-called 300 | %d (%.1f%%) | %d |" % (m["hubs_done"], m["hubs_pct"], m["hubs_total"]),
         "", "Details and history: [docs/PROGRESS.md](docs/PROGRESS.md)", END])
 

@@ -80,6 +80,7 @@ def find_functions(elf, extra=(), tail=False):
                 elif i >= 2 and W[i - 2] == 0x03E00008:
                     funcs.setdefault(pc, "prologue")
         funcs.setdefault(base, "section")
+    for a in find_syscall_wrappers(elf): funcs.setdefault(a, "syscall")      # exact pattern: always a function start
     if tail: funcs.update(_tail_functions(elf, funcs))      # research only: precision unproven
     for a in extra: funcs[a] = "manual"
     return dict(sorted(funcs.items()))
@@ -196,18 +197,22 @@ SYSCALLS = {0x02:"SetGsCrt",0x04:"Exit",0x06:"LoadExecPS2",0x07:"ExecPS2",0x10:"
  0x73:"SetVSyncFlag",0x74:"SetSyscall",0x76:"sceSifDmaStat",0x77:"sceSifSetDma",0x78:"sceSifSetDChain",0x79:"sceSifSetReg",
  0x7A:"sceSifGetReg",0x7C:"Deci2Call",0x7E:"MachineType",0x7F:"GetMemorySize"}
 
-def name_syscalls(elf, table):
-    """Tiny leaf wrappers `li v1,N ; syscall ; jr ra` -> kernel syscall names. -> {addr: name}"""
+def find_syscall_wrappers(elf):
+    """Exact 4-instruction pattern `addiu v1,zero,N ; syscall ; jr ra ; nop` -> {addr: kernel name}.
+    Works even when the wrapper was merged into its neighbour by function detection."""
     out = {}
-    for a, size, _src, _sec in table:
-        if size > 32: continue
-        W = struct.unpack("<%dI" % (size // 4), elf.read(a, size))
-        for w in W:
-            if (w >> 26) == 9 and (w >> 21) & 31 == 0 and (w >> 16) & 31 == 3:   # addiu v1,zero,N
-                n = abs(mips.s16(w & 0xFFFF))
-                if 0x0000000C in [x & 0xFC00003F for x in W] and n in SYSCALLS:
-                    out[a] = SYSCALLS[n] + ("_neg" if mips.s16(w & 0xFFFF) < 0 else "")
+    for sec in elf.code_sections():
+        W = elf.words(sec)
+        for i in range(len(W) - 3):
+            w = W[i]
+            if (w >> 26) == 9 and (w >> 21) & 31 == 0 and (w >> 16) & 31 == 3 and W[i + 1] == 0x0000000C and W[i + 2] == 0x03E00008 and W[i + 3] == 0:
+                v = mips.s16(w & 0xFFFF); n = abs(v)
+                if n in SYSCALLS: out[sec.addr + 4 * i] = SYSCALLS[n] + ("_neg" if v < 0 else "")
     return out
+
+def name_syscalls(elf, table):
+    """{addr: name} for syscall wrappers (see find_syscall_wrappers)."""
+    return find_syscall_wrappers(elf)
 
 def call_graph(elf, table):
     """{callee: set(callers)} from jal (and `j` tail calls into another function)."""

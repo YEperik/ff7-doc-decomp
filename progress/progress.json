@@ -1,28 +1,31 @@
 {
-  "functions_done": 36,
-  "functions_total": 12916,
-  "functions_pct": 0.2787240631774543,
-  "bytes_done": 4520,
+  "functions_done": 51,
+  "functions_total": 12932,
+  "functions_pct": 0.3943705536653263,
+  "bytes_done": 5320,
   "bytes_total": 4390020,
-  "bytes_pct": 0.10296080655668995,
-  "identified_only": 49,
-  "hubs_done": 24,
+  "bytes_pct": 0.12118395815964392,
+  "matched_done": 18,
+  "matched_bytes": 424,
+  "matched_pct": 0.009658270349565606,
+  "identified_only": 71,
+  "hubs_done": 36,
   "hubs_total": 300,
-  "hubs_pct": 8.0,
-  "callsites_done": 3660,
+  "hubs_pct": 12.0,
+  "callsites_done": 5033,
   "callsites_total": 13352,
-  "callsites_pct": 27.411623726782505,
+  "callsites_pct": 37.694727381665665,
   "sections": {
     ".text": {
-      "done": 35,
-      "total": 9646,
-      "bytes_done": 4512,
+      "done": 47,
+      "total": 9661,
+      "bytes_done": 5160,
       "bytes_total": 3541268
     },
     ".kel_extended_program_section": {
-      "done": 1,
-      "total": 1864,
-      "bytes_done": 8,
+      "done": 4,
+      "total": 1865,
+      "bytes_done": 160,
       "bytes_total": 518016
     },
     ".kel_net": {
@@ -50,4 +53,4 @@
       "bytes_total": 31168
     }
   }
-    }
+}

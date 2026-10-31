@@ -22,13 +22,12 @@ The `.kel_*` sections are code overlays: several share the `0x00528780` and `0x0
 
 ## Findings
 
-- **12,916 functions** found (jal targets, prologue-after-return, and 7 manual boundaries).
-- **74 functions named**, each with an evidence tag in `symbols/named.txt`:
-  `syscall` (39) · `sdk-string` (5) · `behavior-verified` (15) · `thunk` (1) · `manual` (2) · `decomp-verified` (12).
-- **19 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`.
+- **12,932 functions** found (jal targets, prologue-after-return, 61 exact syscall-wrapper patterns, and 8 manual boundaries).
+- **103 functions named**, each with an evidence tag in `symbols/named.txt` (`syscall`, `sdk-string`, `behavior-verified`, `thunk`, `manual`, `decomp-verified`).
+- **36 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`. Live numbers: [PROGRESS.md](PROGRESS.md).
 - **SDK libraries present:** libgs, libpad, libmc, libcdvd, libsif, libscf, libdma, libat3dec.
 - **2 embedded IOP modules** (ELF type `0xff80`) inside the executable.
-- **Runtime-loaded modules** (`polmem0:*.erx`) and data-file path formats exist in `.rodata`; see the dev package for the full strings.
+- **Runtime-loaded modules** (`polmem0:*.erx`) and data-file path formats exist in `.rodata`.
 
 ## libc cluster
 
@@ -47,7 +46,7 @@ Identified by **behaviour**, not by name: each small leaf function runs in the b
 
 **Observation.** In `strncpy` the first-quad NUL check computes `~x - 1` instead of `x - 1`, so 7-bit text always falls back to the byte loop. The result is still correct. Only data with bytes >= 0x80 reaches the 16-byte loop.
 
-`src/libc/libc.c` holds C equivalents. `tests/diff_test.py` runs them on the host and compares result and memory with the original (400 random inputs per function, SIMD paths included). Current result: all pass. These are behavioural matches, not byte matches (no `ee-gcc` here).
+`src/libc/libc.c` holds C equivalents. `tests/diff_test.py` runs them on the host and compares result and memory with the original (400 random inputs per function, SIMD paths included). Current result: all pass.
 
 ## Call graph
 
@@ -69,26 +68,48 @@ C reconstructions in `src/game/`. `tests/game_test.py` maps guest memory at iden
 | `FUN_002533b0` | `0x002533b0` | table lookup, value if flag bit 0 set | 128 |
 | `FUN_002533f0` | `0x002533f0` | 1 if any element starts before the previous one ends | |
 | `FUN_00340bf8` | `0x00340bf8` | set/clear flag bit 1 and a byte | 107 |
+| `lock_acquire` | `0x0042d428` | FIFO lock: queue the current thread id, sleep unless first | 563 |
+| `lock_release` | `0x0042d590` | pop the head of the lock queue, wake the next thread | 631 |
+| `lock_acquire_004dfd00` `lock_release_004dfd00` | `0x00251e30` `0x00251e50` | lock a global queue at `0x4dfd00` (allocator guard) | |
+| `FUN_002521f0` `FUN_00252160` `FUN_002521a8` | | allocator wrappers: free, and two identical allocate-with-caller-tag copies | 226, 115, 51 |
+| `FUN_00376198` `FUN_003761e8` | `0x00376198` `0x003761e8` | per-object lock at `+0x3d4`, skipped for the owning thread | 200, 200 |
+| `FUN_00241de8` | `0x00241de8` | is the current thread the stored thread? | |
+| `FUN_0054a920` `FUN_005a3a48` `FUN_005a39e8` `FUN_002a8060` `FUN_002e14f8` `FUN_00326540` | | small non-leaf wrappers | |
 | `FUN_0055a570` `FUN_00316d38` `FUN_002535e0` | | field getter, zero test, `x < 0 ? x : x >> 16` | |
 
 The cell stack has hundreds of callers, which suggests a script or VM stack. That is an inference. Names stay neutral (`FUN_*`) where the purpose is unclear.
 
+Both lock functions call out (`DIntr`, `EIntr`, `GetThreadId`, `SleepThread`, `WakeupThread`, an assertion helper and one wait helper). The test replaces every callee by the same deterministic mock on both sides (hooks in the emulator, `tests/shim.c` for the C) and compares the **sequence of calls and arguments** too. `DIntr` and `EIntr` read the COP0 Status register and execute `di`/`ei`.
+
 Global accesses use `GV(type, address)` placeholders until `.data`/`.bss` are split into real symbols.
+
+## Byte-exact matching
+
+`ps2an cc` is a small C-subset compiler for the R5900 built on a C front end. It reproduces how the original compiler lays out small functions:
+
+- absolute addresses become `lui` plus a 16-bit offset (high half rounded for negative low halves);
+- offsets of 32 KB and more use a shared `base + 0x8000` register;
+- instructions are list-scheduled by critical path (loads take 2 cycles, other instructions 1), ties in source order;
+- the last scheduled instruction fills the delay slot of `jr ra`;
+- the result chain lives in `$v0`, address temporaries in `$v1` (or `$v0` when nothing is returned), other temporaries in the first free register;
+- calls: `addiu sp` and `sd ra` open the function and are scheduled first, arguments are computed straight into `$a0..$a3` (parameters that would be overwritten are copied first), the call's delay slot takes the last instruction that can move there (never one that reads `$ra`), and `addiu sp` fills the delay slot of `jr ra`;
+- the scheduler is dual-issue: two instructions per cycle, at most one memory operation per cycle.
+
+`make match` compiles every reconstructed function and compares the instructions with the original. 18 functions are byte-exact so far (`src/game/matched.txt`); the rest report what the compiler still lacks (branches, loops, values kept across calls). The assembler behind it is validated by `tests/asm_test.py` (disassemble then assemble reproduces 99.5% of the entry code of every detected function; the remainder is data misread as code).
 
 ## Tool accuracy
 
-Compared with a Ghidra auto-analysis of the same ELF (13,090 functions):
+Compared with an independent auto-analysis of the same executable (13,090 functions; 13 exact syscall wrappers found here are missing there):
 
 | Metric | Result |
 |---|---|
-| Recall | 98.1% |
-| Precision | 99.5% |
+| Recall | 98.2% |
+| Precision | 99.4% |
 
-Reproduce: `make ghidra-check` (needs your own `.gzf`).
 
 ## Limits
 
 - Leaf functions without a `jal` caller (indirect calls only) can be missed.
 - `ps2an` decodes the core MIPS set; R5900 MMI and COP2 appear as `.word`.
 - Names are only assigned where evidence is strong; everything else stays `FUN_<addr>`.
-- Adjacent tiny functions without a `jal` caller can be merged. `ps2an tail` lists 2,469 candidates, but they are **unverified** (only 133 are known to Ghidra) and are not part of the default list.
+- Adjacent tiny functions without a `jal` caller can be merged. `ps2an tail` lists 2,469 candidates, but they are **unverified** (only 133 are confirmed by the independent analysis) and are not part of the default list.

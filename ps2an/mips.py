@@ -39,7 +39,8 @@ def decode(w, pc):
         if f in (17,19,41): return "%s $%s" % (m, R[rs])
         if f == 40: return "mfsa $%s" % R[rd]
         if f in (24,25,26,27): return "%s $%s, $%s" % (m, R[rs], R[rt])
-        if f in (12,13,15): return m
+        if f in (12, 13): c = (w >> 6) & 0xFFFFF; return m if c == 0 else "%s 0x%x" % (m, c)
+        if f == 15: return m
         return "%s $%s, $%s, $%s" % (m, R[rd], R[rs], R[rt])
     if op == 1:
         m = _RI.get(rt)

@@ -71,11 +71,26 @@ INCLUDE_ASM("text", strncpy);
 /* 0x0044b660 */
 INCLUDE_ASM("text", memchr);
 
+/* 0x0044cb68 */
+INCLUDE_ASM("text", DIntr);
+
+/* 0x0044cbb0 */
+INCLUDE_ASM("text", EIntr);
+
 /* 0x004515b0 */
 INCLUDE_ASM("text", SetSyscall);
 
+/* 0x00451ce0 */
+INCLUDE_ASM("text", SetGsCrt);
+
 /* 0x00451d00 */
 INCLUDE_ASM("text", Exit);
+
+/* 0x00451d20 */
+INCLUDE_ASM("text", LoadExecPS2);
+
+/* 0x00451d30 */
+INCLUDE_ASM("text", ExecPS2);
 
 /* 0x00451dc0 */
 INCLUDE_ASM("text", AddIntcHandler);
@@ -87,6 +102,9 @@ INCLUDE_ASM("text", AddIntcHandler);
 INCLUDE_ASM("text", RemoveIntcHandler);
 
 /* 0x00451df0 */
+INCLUDE_ASM("text", AddDmacHandler);
+
+/* 0x00451e00 */
 INCLUDE_ASM("text", AddDmacHandler);
 
 /* 0x00451e10 */
@@ -111,13 +129,25 @@ INCLUDE_ASM("text", CreateThread);
 INCLUDE_ASM("text", DeleteThread);
 
 /* 0x00451f00 */
+INCLUDE_ASM("text", StartThread);
+
+/* 0x00451f10 */
 INCLUDE_ASM("text", ExitThread);
 
 /* 0x00451f20 */
 INCLUDE_ASM("text", ExitDeleteThread);
 
+/* 0x00451f30 */
+INCLUDE_ASM("text", TerminateThread);
+
 /* 0x00451f70 */
 INCLUDE_ASM("text", ChangeThreadPriority);
+
+/* 0x00451f90 */
+INCLUDE_ASM("text", RotateThreadReadyQueue);
+
+/* 0x00451fb0 */
+INCLUDE_ASM("text", ReleaseWaitThread);
 
 /* 0x00451fd0 */
 INCLUDE_ASM("text", GetThreadId);
@@ -131,8 +161,23 @@ INCLUDE_ASM("text", SleepThread);
 /* 0x00452010 */
 INCLUDE_ASM("text", WakeupThread);
 
+/* 0x00452020 */
+INCLUDE_ASM("text", iWakeupThread_neg);
+
+/* 0x00452030 */
+INCLUDE_ASM("text", CancelWakeupThread);
+
 /* 0x00452050 */
 INCLUDE_ASM("text", SuspendThread);
+
+/* 0x00452070 */
+INCLUDE_ASM("text", ResumeThread);
+
+/* 0x004520a0 */
+INCLUDE_ASM("text", SetupThread);
+
+/* 0x004520b0 */
+INCLUDE_ASM("text", SetupHeap);
 
 /* 0x004520c0 */
 INCLUDE_ASM("text", EndOfHeap);
@@ -153,7 +198,16 @@ INCLUDE_ASM("text", iSignalSema_neg);
 INCLUDE_ASM("text", WaitSema);
 
 /* 0x00452130 */
+INCLUDE_ASM("text", PollSema);
+
+/* 0x00452140 */
 INCLUDE_ASM("text", iPollSema_neg);
+
+/* 0x00452150 */
+INCLUDE_ASM("text", ReferSemaStatus);
+
+/* 0x00452360 */
+INCLUDE_ASM("text", FlushCache);
 
 /* 0x00452400 */
 INCLUDE_ASM("text", GsGetIMR);
@@ -167,7 +221,16 @@ INCLUDE_ASM("text", GsPutIMR);
 /* 0x00452430 */
 INCLUDE_ASM("text", GsPutIMR_neg);
 
+/* 0x00452450 */
+INCLUDE_ASM("text", SetVSyncFlag);
+
+/* 0x00452460 */
+INCLUDE_ASM("text", SetSyscall);
+
 /* 0x00452480 */
+INCLUDE_ASM("text", sceSifDmaStat);
+
+/* 0x00452490 */
 INCLUDE_ASM("text", sceSifDmaStat_neg);
 
 /* 0x004524a0 */
@@ -187,3 +250,12 @@ INCLUDE_ASM("text", sceSifSetReg);
 
 /* 0x004524f0 */
 INCLUDE_ASM("text", sceSifGetReg);
+
+/* 0x00452510 */
+INCLUDE_ASM("text", Deci2Call);
+
+/* 0x00452530 */
+INCLUDE_ASM("text", MachineType);
+
+/* 0x00452540 */
+INCLUDE_ASM("text", GetMemorySize);

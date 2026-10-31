@@ -8,3 +8,5 @@ FUN_002413e0 = 0x002413e0; // boundary only
 FUN_002533f0 = 0x002533f0; // boundary only
 DIntr = 0x0044cb68; // reads COP0 Status (EIE bit), executes `di` until it takes effect, returns the old state
 EIntr = 0x0044cbb0; // reads COP0 Status, executes `ei`, returns the state
+FUN_00326560 = 0x00326560; // boundary only: empty function (`jr ra; nop`) after 0x326540
+FUN_0054a960 = 0x0054a960; // boundary only: empty function (`jr ra; nop`) after 0x54a920

@@ -113,26 +113,15 @@ def matches(elf, addr, spec, trials=60, seed=7, tolerate=False, cov=None):
         if not chk(ret, cpu.mem): return False
     return ran >= trials // 2 if tolerate else True
 
-# Pre-computed supported opcode function sets for fast instruction execution checks.
-# Avoids expensive string decoding/formatting in decode() during candidate function scans (~5x speedup).
-_SPECIAL_OK = {0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 32, 33, 34, 35, 36, 37, 38, 39, 42, 43, 44, 45, 46, 47, 56, 58, 59, 60, 62, 63}
-_IMM_OK = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25}
-_BR_OK = {2, 3, 4, 5, 6, 7, 20, 21, 22, 23}
-_MEM_OK = {26, 27, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 52, 55, 63}
-
-_RI_OK = {0, 1, 2, 3, 16, 17}
-
-def supported(w, pc=0):
+from .mips import decode
+def supported(w, pc):
     """True if the emulator can execute this instruction."""
     from .emu import MMI_OK
     op = w >> 26
-    if op == 0:
-        return (w & 63) in _SPECIAL_OK
-    if op == 1:
-        return ((w >> 16) & 31) in _RI_OK
-    if op == 0x1C:
-        return ((w & 63), (w >> 6) & 31) in MMI_OK
-    return op in _IMM_OK or op in _BR_OK or op in _MEM_OK
+    if op == 0x1C: return ((w & 63), (w >> 6) & 31) in MMI_OK
+    if op in (30, 31): return True
+    t = decode(w, pc)
+    return not (t.startswith(".word") or t.split()[0] in ("lwc1", "swc1", "lqc2", "sqc2", "mfc1", "mtc1", "mfc0", "mtc0", "mfsa", "mtsa"))
 
 MIN_COVERAGE = 0.90
 def identify(elf, table, max_size=0x600):

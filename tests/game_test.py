@@ -85,24 +85,54 @@ def g_spans(r, env):
     return [ARENA]
 def g_flags(r, env): return [ARENA, r.choice([0, 1, -1, 5]), r.choice([-5, -1, 0, 3, 200, 0x1FF])]
 
-def g_lock(r, env):
-    env.w32(ARENA + 0x84, 0 if r.random() < .15 else r.getrandbits(32) | 1)
+def g_lock(r, env): setup_lock(r, env, ARENA); return [ARENA]
+
+LOCKQS = []
+def setup_lock(r, env, q):
+    LOCKQS.append(q); env.w32(q + 0x84, 0 if r.random() < .12 else r.getrandbits(32) | 1)
     w = r.randint(0, 31); mode = r.choice(["empty", "full", "mid", "mid"])
     rr = w if mode == "empty" else (w + 1) & 31 if mode == "full" else r.randint(0, 31)
-    env.write(ARENA + 0x80, struct.pack("<HH", rr, w)); return [ARENA]
+    env.write(q + 0x80, struct.pack("<HH", rr, w))
+def g_gq(r, env): setup_lock(r, env, 0x4dfd00); return []
+def g_free(r, env): setup_lock(r, env, 0x4dfd00); return [r.getrandbits(32)]
+def g_alloc(r, env): setup_lock(r, env, 0x4dfd00); return [r.choice([0, 1, 16, 0x1000, r.getrandbits(32)])]
+def g_objlock(r, env): setup_lock(r, env, ARENA + 0x3d4); return [ARENA, r.choice([0, 1, -1, 7, 0, 1])]
+def g_gv4fc(r, env):
+    if r.random() < .4: env.w32(0x46b4fc, 0)
+    return []
+def g_obj54(r, env):
+    if r.random() < .5: env.w32(ARENA + 0x108, 0)
+    return [ARENA + 0x100, ARENA + 0x2000 + 16 * r.randint(0, 20)]
+def g_5a3a48(r, env): env.w32(0x46f2e0, ARENA + 0x5000); return [ri32(r) & M32, ri32(r)]
+def g_5a39e8(r, env): env.w32(0x46f2e0, ARENA + 0x5000); return [ARENA, r.choice([0, 1, 2, 3, 0x81, -1])]
+def g_2a8060(r, env): env.w32(0x4ec258, ARENA + 0x6000); return [r.choice([0, 0, ri32(r), 5])]
+def g_2e14f8(r, env): return [ri32(r), ri32(r), ri32(r), r.choice([1, 0, 2, -1, ri32(r)])]
 
-# ---- mocked callees: the same deterministic world drives both the C (via tests/shim.c) and the emulated original ----
-CALLEES = {0x0044cb68: 1, 0x0044cbb0: 2, 0x00451fd0: 3, 0x00452000: 4, 0x00452010: 5, 0x0042d398: 6, 0x00248fd0: 7}   # guest address -> id
+# ---- mocked callees: one deterministic world drives both the C (via tests/shim.c) and the emulated original ----
+# name -> (guest address, arity, argument kinds: v = compared value, o = output pointer, return kind)
+CALLEES = {
+ "DIntr": (0x0044cb68, 0, "", "bit"), "EIntr": (0x0044cbb0, 0, "", "bit"), "GetThreadId": (0x00451fd0, 0, "", "tid"),
+ "SleepThread": (0x00452000, 0, "", None), "WakeupThread": (0x00452010, 1, "v", "zero"),
+ "FUN_0042d398": (0x0042d398, 1, "v", None), "FUN_00248fd0": (0x00248fd0, 1, "v", None),
+ "RotateThreadReadyQueue": (0x00451f90, 1, "v", "rand"), "FUN_00251150": (0x00251150, 1, "v", None),
+ "FUN_002510b8": (0x002510b8, 3, "vvv", "rand"), "FUN_0054a7e8": (0x0054a7e8, 2, "vo", None),
+ "FUN_0036f798": (0x0036f798, 2, "vv", "rand"), "FUN_002f3278": (0x002f3278, 2, "vv", "rand"), "FUN_0030b6b0": (0x0030b6b0, 3, "vvv", "rand"),
+ "break": (None, 0, "", None),
+}
 class World:
-    def __init__(self, seed, rd16, wr16): self.rng = random.Random(seed); self.log = []; self.rd16 = rd16; self.wr16 = wr16
-    def call(self, ident, a0=0):
-        a0 &= M32; self.log.append((ident, a0 if ident in (5, 6, 7) else 0)); r = 0
-        if ident in (1, 2): r = self.rng.randint(0, 1)
-        elif ident == 3: r = self.rng.randint(1, 60)
-        elif ident == 6: self.wr16(ARENA + 0x80, (self.rd16(ARENA + 0x82) + 5) & 0x1F)        # another thread drains the queue
-        return r
+    def __init__(self, seed, rd, wr, lockqs): self.rng = random.Random(seed); self.log = []; self.rd = rd; self.wr = wr; self.lockqs = lockqs
+    def call(self, name, args=()):
+        _a, arity, kinds, ret = CALLEES[name]
+        self.log.append((name, tuple(x & M32 for x, k in zip(args[:arity], kinds) if k == "v")))
+        if name == "FUN_0042d398":                                       # another thread drains every lock queue under test
+            for q in self.lockqs: self.wr(q + 0x80, struct.pack("<H", (struct.unpack("<H", self.rd(q + 0x82, 2))[0] + 5) & 0x1F))
+        if name == "FUN_0054a7e8": self.wr(args[1], self.rng.randbytes(0x40))      # fills the output buffer
+        if ret == "bit": return self.rng.randint(0, 1)
+        if ret == "tid": return struct.unpack("<i", self.rd(0x004b8cf8, 4))[0] if self.rng.random() < .5 else self.rng.randint(1, 60)
+        if ret == "rand": return s32(self.rng.getrandbits(32))
+        return 0
 
-GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000]
+GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000, 0x4df000, 0x46f000, 0x4ec000]
 # name, guest address, argument generator, return kind ("s32" | "ptr" | "void")
 SPECS = [
  ("cstack_pop", 0x003aa140, g_pop, "s32"), ("cstack_push_int", 0x003aa0c0, g_push, "void"), ("cstack_drop", 0x003aa108, g_drop, "void"),
@@ -114,8 +144,13 @@ SPECS = [
  ("FUN_002535e0", 0x002535e0, g_s32, "s32"), ("FUN_003cb2f8", 0x003cb2f8, g_find, "ptr"), ("FUN_002533b0", 0x002533b0, g_lookup, "s32"),
  ("FUN_002533f0", 0x002533f0, g_spans, "s32"), ("FUN_00340bf8", 0x00340bf8, g_flags, "void"),
  ("lock_acquire", 0x0042d428, g_lock, "void"), ("lock_release", 0x0042d590, g_lock, "void"),
+ ("lock_acquire_004dfd00", 0x00251e30, g_gq, "void"), ("lock_release_004dfd00", 0x00251e50, g_gq, "void"),
+ ("FUN_002521f0", 0x002521f0, g_free, "void"), ("FUN_00252160", 0x00252160, g_alloc, "s32"), ("FUN_002521a8", 0x002521a8, g_alloc, "s32"),
+ ("FUN_00241de8", 0x00241de8, g_none, "s32"), ("FUN_00376198", 0x00376198, g_objlock, "void"), ("FUN_003761e8", 0x003761e8, g_objlock, "void"),
+ ("get_gvar_0046b4fc", 0x002424a0, g_gv4fc, "s32"), ("FUN_00326540", 0x00326540, g_gv4fc, "s32"),
+ ("FUN_0054a920", 0x0054a920, g_obj54, "void"), ("FUN_005a3a48", 0x005a3a48, g_5a3a48, "s32"), ("FUN_005a39e8", 0x005a39e8, g_5a39e8, "void"),
+ ("FUN_002a8060", 0x002a8060, g_2a8060, "void"), ("FUN_002e14f8", 0x002e14f8, g_2e14f8, "s32"),
 ]
-MOCKED = {"lock_acquire", "lock_release"}
 
 def check_manifest():
     got = {m.group(1): int(m.group(2), 16) for m in (re.match(r"\s*(\w+)\s*=\s*(0x[0-9a-fA-F]+);", l) for l in open(os.path.join(ROOT, "src/game/decomp.txt"))) if m}
@@ -127,38 +162,43 @@ def build():
     subprocess.run(["gcc", "-O2", "-shared", "-fPIC", "-fno-builtin", "-fno-strict-aliasing", "-fwrapv", "-w", "-DGV_BASE=%dUL" % GV_OFF, "-DHOST_TEST", "-I", os.path.join(ROOT, "src/include"), "-o", so, *srcs], check=True)
     return ctypes.CDLL(so)
 
-CBTYPE = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64)
+def host_write(env, a, d):
+    try: env.write(a, d)
+    except KeyError: ctypes.memmove(a, bytes(d), len(d))       # a real host pointer (e.g. a local buffer of the C code)
+
+CBTYPE = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64)
 
 def main(elf_path, trials=500):
     check_manifest(); elf = Elf(elf_path); table = A.func_table(elf, A.find_functions(elf, A.load_overrides(os.path.join(ROOT, "symbols/overrides.txt"))))
     size = {a: s for a, s, _, _ in table}; lib = build(); fetch = lambda pc: int.from_bytes(elf.read(pc, 4), "little"); bad = 0
     env = Env(); env.region(ARENA, ARENA_SZ)
     for pg in GLOBAL_PAGES: env.region(pg, 0x1000, GV_OFF)
-    cur = {}                                                  # current host-side world, used by the C callbacks
-    cb = CBTYPE(lambda i, a0, a1, a2, a3: cur["w"].call(i, a0)); lib.shim_set_cb(cb)
+    cur = {}; reconstructed = {n for n, _a, _g, _r in SPECS}
+    cb = CBTYPE(lambda n, a0, a1, a2, a3: cur["w"].call(n.decode(), (a0, a1, a2, a3))); lib.shim_set_cb(cb)
+    only = set(filter(None, os.environ.get("ONLY", "").split(",")))          # e.g. ONLY=FUN_002e14f8,FUN_003761e8
     for name, addr, gen, rk in SPECS:
+        if only and name not in only: continue
         f = getattr(lib, name); f.restype = ctypes.c_int64 if rk != "ptr" else ctypes.c_void_p
-        rng = random.Random(addr); ok = 0; seen = set(); mocked = name in MOCKED
+        rng = random.Random(addr); ok = 0; seen = set(); calls = 0
         for t in range(trials):
-            env.randomize(rng); args = gen(rng, env)
+            LOCKQS.clear(); env.randomize(rng); args = gen(rng, env)
             snaps = [(a_, env.host(a_, n)) for a_, n in env.regions]
             f.argtypes = [ctypes.c_int64 if a_ < 0 else ctypes.c_uint64 for a_ in args]
-            hw = World(t, lambda a_: struct.unpack("<H", env.host(a_, 2))[0], lambda a_, v: env.write(a_, struct.pack("<H", v))); cur["w"] = hw
+            hw = World(t, lambda a_, n: env.host(a_, n), lambda a_, d: host_write(env, a_, d), list(LOCKQS)); cur["w"] = hw
             cr = f(*args); cr = (cr or 0) & M32 if rk != "void" else 0
             mem = SnapMem(snaps); cpu = CPU(fetch, mem)
-            ew = World(t, lambda a_: mem.u(a_, 2), lambda a_, v: mem.put(a_, 2, v))
-            if mocked:
-                for ga, ident in CALLEES.items():
-                    cpu.hooks[ga] = (lambda c, i=ident: c.r.__setitem__(2, ew.call(i, c.r[4]) & 0xFFFFFFFFFFFFFFFF))
-                cpu.on_break = lambda c: ew.call(9)
-            try: orv = cpu.run(addr, [x & 0xFFFFFFFFFFFFFFFF for x in args], limit=20000) & M32
+            ew = World(t, lambda a_, n: mem.rd(a_, n), lambda a_, d: mem.wr(a_, d), list(LOCKQS))
+            for cn, (ga, _ar, _k, _rt) in CALLEES.items():                   # callees that are not reconstructed run as mocks
+                if ga is not None and cn not in reconstructed: cpu.hooks[ga] = (lambda c, n=cn: c.r.__setitem__(2, ew.call(n, (c.r[4], c.r[5], c.r[6], c.r[7])) & 0xFFFFFFFFFFFFFFFF))
+            cpu.on_break = lambda c: ew.call("break")
+            try: orv = cpu.run(addr, [x & 0xFFFFFFFFFFFFFFFF for x in args], limit=40000) & M32
             except (Unsupported, KeyError) as ex: print("ERR", name, ex); bad += 1; break
             orv = orv if rk != "void" else 0
-            seen |= cpu.seen
+            seen |= cpu.seen; calls += len(hw.log)
             same = (cr == orv) and hw.log == ew.log and all(env.host(a_, n) == mem.final(a_, d) for (a_, d), (_, n) in zip(snaps, env.regions)); ok += same
         body = [addr + 4 * i for i in range(size[addr] // 4) if fetch(addr + 4 * i) != 0]; cov = len(set(body) & seen) / len(body)
         good = ok == trials and cov >= 0.999; bad += not good
-        print("%-20s 0x%08x  %4d/%-4d  cov %3.0f%%  %s%s" % (name, addr, ok, trials, 100 * cov, "PASS" if good else "FAIL", "  (calls compared)" if mocked else ""))
+        print("%-24s 0x%08x  %4d/%-4d  cov %3.0f%%  %s%s" % (name, addr, ok, trials, 100 * cov, "PASS" if good else "FAIL", "  (%d calls compared)" % calls if calls else ""))
     print("RESULT:", "FAIL" if bad else "ALL PASS"); sys.exit(1 if bad else 0)
 
 if __name__ == "__main__": main(sys.argv[1] if len(sys.argv) > 1 else "game/SLPM_666.29")

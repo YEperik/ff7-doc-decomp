@@ -1,0 +1,19 @@
+# Functions whose C compiles (ps2an cc) to the exact original instructions
+has_flag_004b8b80 = 0x002413c0;
+set_gvar_0046b3d4 = 0x002413e0;
+get_flag_004b8cc8 = 0x002419d8;
+set_gvar_004b8d9c = 0x002419f0;
+get_gvar_004b8d9c = 0x00241a00;
+get_gvar_004b8d3c = 0x00241a10;
+FUN_00241de8 = 0x00241de8;
+get_gvar_0046b4fc = 0x002424a0;
+lock_acquire_004dfd00 = 0x00251e30;
+lock_release_004dfd00 = 0x00251e50;
+get_gvar_0046de04 = 0x002e14e8;
+FUN_00316d38 = 0x00316d38;
+FUN_00326540 = 0x00326540;
+get_gvar_004efda0 = 0x003a8db8;
+cstack_pop = 0x003aa140;
+copy16 = 0x00444eb8;
+FUN_0055a570 = 0x0055a570;
+FUN_005a3a48 = 0x005a3a48;

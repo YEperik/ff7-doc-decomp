@@ -126,6 +126,34 @@ def cmd_ident(a):
         for nm, addrs in sorted(g.items()):
             for ad in addrs: print("0x%08x  %-8s %s" % (ad, nm, conf))
 
+def cmd_match(a):
+    """Compile every reconstructed function with `ps2an cc` and compare with the original bytes."""
+    import glob, re, struct
+    from . import cc
+    e, t = load(a.elf); decomp = A.load_overrides(DECOMP); size = {x[0]: x[1] for x in t}
+    srcs = {}
+    for f in sorted(glob.glob("src/game/*.c")):
+        txt = open(f).read()
+        for nm in decomp.values():
+            if re.search(r"\b%s\s*\(" % re.escape(nm), txt) and re.search(r"^[\w\s\*]+\b%s\s*\([^;]*\)\s*\{" % re.escape(nm), txt, re.M): srcs[nm] = f
+    symbols = {nm: ad for ad, (nm, _ev) in named(e, t).items()}; symbols.update({nm: ad for ad, nm in decomp.items()})
+    matched = []; rows = []
+    for ad, nm in sorted(decomp.items()):
+        f = srcs.get(nm)
+        if not f: continue
+        try: words, lines = cc.compile_function(f, nm, symbols=symbols)
+        except cc.Unsupported as ex: rows.append((nm, ad, "unsupported", str(ex))); continue
+        except Exception as ex: rows.append((nm, ad, "error", "%s: %s" % (type(ex).__name__, str(ex)[:60]))); continue
+        orig = [int.from_bytes(e.read(ad + 4 * i, 4), "little") for i in range(len(words))]
+        if orig == words: matched.append(nm); rows.append((nm, ad, "MATCH", "%d instructions" % len(words)))
+        else:
+            n = next((i for i in range(len(words)) if words[i] != orig[i]), 0)
+            rows.append((nm, ad, "differs", "first diff at +0x%x: want %s, got %s" % (4 * n, mips.decode(orig[n], ad + 4 * n), lines[n])))
+    for nm, ad, st, info in rows: print("%-26s 0x%08x  %-11s %s" % (nm, ad, st, info))
+    print("matched %d of %d reconstructed" % (len(matched), len(decomp)))
+    if a.write:
+        open("src/game/matched.txt", "w").write("# Functions whose C compiles (ps2an cc) to the exact original instructions\n" + "".join("%s = 0x%08x;\n" % (nm, ad) for ad, nm in sorted(decomp.items()) if nm in matched))
+
 def cmd_progress(a):
     from . import progress as P
     m = P.compute(a.root)
@@ -182,6 +210,7 @@ def main():
     s = add("xrefs", cmd_xrefs, "functions referencing strings matching a regex"); s.add_argument("pattern")
     add("sdk", cmd_sdk, "SDK / kernel function names")
     add("ident", cmd_ident, "name libc-like functions by running them in the emulator")
+    s = add("match", cmd_match, "compile reconstructed C with ps2an cc and compare bytes"); s.add_argument("--write", action="store_true")
     s = add("progress", cmd_progress, "update progress files from public metadata", elf=False); s.add_argument("--root", default="."); s.add_argument("--record", metavar="LABEL"); s.add_argument("--date"); s.add_argument("--check", action="store_true")
     s = add("tail", cmd_tail, "research: tiny-function candidates (unverified)"); s.add_argument("-o", default="build/tail_candidates.txt")
     s = add("hubs", cmd_hubs, "most-called functions (decompilation targets)"); s.add_argument("-o", default="symbols/hubs.csv"); s.add_argument("--top", type=int, default=300)
