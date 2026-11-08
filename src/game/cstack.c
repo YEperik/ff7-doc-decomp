@@ -24,3 +24,10 @@ void cstack_drop(CellCtx *c, void *out) {
     if (out) *(u64 *)out = *PTR(u64, c->sp);
     c->sp += sizeof(Cell);
 }
+
+/* 0x003aa0e8: push a copy of an 8-byte cell */
+void cstack_push_cell(CellCtx *c, const u64 *src) {
+    u32 sp = c->sp;
+    c->sp = sp - sizeof(Cell);
+    *PTR(u64, sp - sizeof(Cell)) = *src;
+}
