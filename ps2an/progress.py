@@ -14,54 +14,27 @@ def _load_manifest(path):
 
 def compute(root=".", decomp=None, libc=True):
     """decomp/libc let history backfill recompute earlier milestones."""
+    funcs = [(int(r["address"], 16), int(r["size"]), r["section"]) for r in csv.DictReader(open(os.path.join(root, "symbols/functions.csv")))]
     named = _load_named(os.path.join(root, "symbols/named.txt"))
     done = set(decomp if decomp is not None else _load_manifest(os.path.join(root, "src/game/decomp.txt")))
     if libc: done |= {a for a, (_n, ev) in named.items() if ev == "behavior-verified"}       # libc functions with tested C in src/libc
     ident = {a for a in named if a not in done}
     mpath = os.path.join(root, "src/game/matched.txt")
     matched = set(_load_manifest(mpath)) & done if os.path.exists(mpath) and decomp is None else set()
-
-    # Performance optimization:
-    # symbols/functions.csv contains ~13,000 rows.
-    # 1. Parsing without csv.DictReader avoids dict creation overhead.
-    # 2. Addresses in symbols/functions.csv are canonical '0x%08x' strings. Pre-formatting
-    #    done and matched address sets to hex strings avoids calling int(p0, 16) on all
-    #    ~13,000 lines (~4.5ms saved).
-    # 3. Direct 'in sec' membership lookup avoids creating a new [0, 0, 0, 0] list allocation
-    #    on every single iteration of sec.setdefault().
-    # Combined, this reduces parsing time from ~19ms to ~14.5ms (~23% speedup).
-    done_hex = {"0x%08x" % a for a in done}
-    matched_hex = {"0x%08x" % a for a in matched}
-    tot_f = tot_b = df_count = db = mf_count = mb = 0
+    tot_f, tot_b = len(funcs), sum(s for _, s, _ in funcs)
+    df = [f for f in funcs if f[0] in done]; db = sum(s for _, s, _ in df)
     sec = {}
-    with open(os.path.join(root, "symbols/functions.csv")) as fh:
-        next(fh)  # skip header
-        for line in fh:
-            p0, p1, p2, _ = line.split(",", 3)
-            s = int(p1)
-            tot_f += 1; tot_b += s
-            if p2 in sec: d = sec[p2]
-            else: d = sec[p2] = [0, 0, 0, 0]
-            d[1] += 1; d[3] += s
-            if p0 in done_hex:
-                df_count += 1; db += s
-                d[0] += 1; d[2] += s
-                if p0 in matched_hex:
-                    mf_count += 1; mb += s
-
+    for a, s, name in funcs:
+        d = sec.setdefault(name, [0, 0, 0, 0]); d[1] += 1; d[3] += s
+        if a in done: d[0] += 1; d[2] += s
+    mf = [f for f in funcs if f[0] in matched]; mb = sum(x[1] for x in mf)
     hubs = []
     p = os.path.join(root, "symbols/hubs.csv")
-    if os.path.exists(p):
-        with open(p) as fh:
-            next(fh)  # skip header
-            for line in fh:
-                if line.strip():
-                    parts = line.split(",")
-                    hubs.append((int(parts[0], 16), int(parts[2])))
+    if os.path.exists(p): hubs = [(int(r["address"], 16), int(r["callers"])) for r in csv.DictReader(open(p))]
     hd = [h for h in hubs if h[0] in done]
-    return {"functions_done": df_count, "functions_total": tot_f, "functions_pct": 100.0 * df_count / tot_f,
+    return {"functions_done": len(df), "functions_total": tot_f, "functions_pct": 100.0 * len(df) / tot_f,
             "bytes_done": db, "bytes_total": tot_b, "bytes_pct": 100.0 * db / tot_b,
-            "matched_done": mf_count, "matched_bytes": mb, "matched_pct": 100.0 * mb / tot_b,
+            "matched_done": len(mf), "matched_bytes": mb, "matched_pct": 100.0 * mb / tot_b,
             "identified_only": len(ident), "hubs_done": len(hd), "hubs_total": len(hubs),
             "hubs_pct": 100.0 * len(hd) / max(1, len(hubs)),
             "callsites_done": sum(c for _, c in hd), "callsites_total": sum(c for _, c in hubs),
