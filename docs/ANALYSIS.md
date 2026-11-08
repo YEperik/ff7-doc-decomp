@@ -22,9 +22,9 @@ The `.kel_*` sections are code overlays: several share the `0x00528780` and `0x0
 
 ## Findings
 
-- **12,932 functions** found (jal targets, prologue-after-return, 61 exact syscall-wrapper patterns, and 8 manual boundaries).
-- **103 functions named**, each with an evidence tag in `symbols/named.txt` (`syscall`, `sdk-string`, `behavior-verified`, `thunk`, `manual`, `decomp-verified`).
-- **36 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`. Live numbers: [PROGRESS.md](PROGRESS.md).
+- **12,938 functions** found (jal targets, prologue-after-return, 61 exact syscall-wrapper patterns, and 14 manual boundaries).
+- **114 functions named**, each with an evidence tag in `symbols/named.txt` (`syscall`, `sdk-string`, `behavior-verified`, `thunk`, `manual`, `decomp-verified`).
+- **93 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`. Live numbers: [PROGRESS.md](PROGRESS.md).
 - **SDK libraries present:** libgs, libpad, libmc, libcdvd, libsif, libscf, libdma, libat3dec.
 - **2 embedded IOP modules** (ELF type `0xff80`) inside the executable.
 - **Runtime-loaded modules** (`polmem0:*.erx`) and data-file path formats exist in `.rodata`.
@@ -75,6 +75,9 @@ C reconstructions in `src/game/`. `tests/game_test.py` maps guest memory at iden
 | `FUN_00376198` `FUN_003761e8` | `0x00376198` `0x003761e8` | per-object lock at `+0x3d4`, skipped for the owning thread | 200, 200 |
 | `FUN_00241de8` | `0x00241de8` | is the current thread the stored thread? | |
 | `FUN_0054a920` `FUN_005a3a48` `FUN_005a39e8` `FUN_002a8060` `FUN_002e14f8` `FUN_00326540` | | small non-leaf wrappers | |
+| ~30 accessors and flag setters | | global variables, bit flags in globals and objects, byte/halfword fields | |
+| table and list lookups | | tables behind global pointers, a 3-entry record table, a signed-nibble index, a free list (`FUN_0036f770` `FUN_0036f798`) | |
+| `lock_acquire_005035a8` `FUN_0041f358` and release pairs | | more locks: a global at `0x5035a8` and per-object at `+8` | |
 | `FUN_0055a570` `FUN_00316d38` `FUN_002535e0` | | field getter, zero test, `x < 0 ? x : x >> 16` | |
 
 The cell stack has hundreds of callers, which suggests a script or VM stack. That is an inference. Names stay neutral (`FUN_*`) where the purpose is unclear.
@@ -93,9 +96,11 @@ Global accesses use `GV(type, address)` placeholders until `.data`/`.bss` are sp
 - the last scheduled instruction fills the delay slot of `jr ra`;
 - the result chain lives in `$v0`, address temporaries in `$v1` (or `$v0` when nothing is returned), other temporaries in the first free register;
 - calls: `addiu sp` and `sd ra` open the function and are scheduled first, arguments are computed straight into `$a0..$a3` (parameters that would be overwritten are copied first), the call's delay slot takes the last instruction that can move there (never one that reads `$ra`), and `addiu sp` fills the delay slot of `jr ra`;
-- the scheduler is dual-issue: two instructions per cycle, at most one memory operation per cycle.
+- the scheduler is dual-issue: two instructions per cycle, at most one memory operation per cycle;
+- stores form the address before the value, the constant 0 comes from `$zero`, and a returned parameter is copied into `$v0` at function entry;
+- a call that ends a void function becomes a sibling call (`j`, no frame) unless the file is marked `/* cc: nosibcall */` (the allocator module is compiled that way).
 
-`make match` compiles every reconstructed function and compares the instructions with the original. 18 functions are byte-exact so far (`src/game/matched.txt`); the rest report what the compiler still lacks (branches, loops, values kept across calls). The assembler behind it is validated by `tests/asm_test.py` (disassemble then assemble reproduces 99.5% of the entry code of every detected function; the remainder is data misread as code).
+`make match` compiles every reconstructed function and compares the instructions with the original. 39 functions are byte-exact so far (`src/game/matched.txt`); the rest report what the compiler still lacks (branches, loops, values kept across calls). The assembler behind it is validated by `tests/asm_test.py` (disassemble then assemble reproduces 99.5% of the entry code of every detected function; the remainder is data misread as code).
 
 ## Tool accuracy
 
