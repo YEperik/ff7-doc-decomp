@@ -23,7 +23,7 @@ void FUN_0054a920(Obj54 *o, Quad *out) {
 /* 0x005a3a48 */
 typedef struct { u8 pad[0x14]; s32 f14; } Obj5a;
 /* the second argument is passed by callers but never read */
-s32 FUN_005a3a48(u32 x, s32 unused) { return FUN_0036f798(PTR(Obj5a, GV(u32, 0x0046f2e0))->f14, x); }
+void FUN_005a3a48(u32 x, s32 unused) { FUN_0036f798(PTR(Obj5a, GV(u32, 0x0046f2e0))->f14, x); }
 
 /* 0x005a39e8 */
 typedef struct { u8 pad[0x7c]; u32 f7c; } Obj5b;
