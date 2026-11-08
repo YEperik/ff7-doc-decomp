@@ -1,3 +1,4 @@
+/* cc: nosibcall */
 /* Lock around the allocator and its two thin wrappers. */
 #include "game_extern.h"
 #include "game_lock.h"
