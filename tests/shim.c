@@ -18,7 +18,6 @@ s32  RotateThreadReadyQueue(s32 p) { return (s32)cb("RotateThreadReadyQueue", A(
 void FUN_00251150(void *p)       { cb("FUN_00251150", P(p), 0, 0, 0); }
 u32  FUN_002510b8(u32 s, u32 a, u32 t) { return (u32)cb("FUN_002510b8", A(s), A(a), A(t), 0); }
 void FUN_0054a7e8(void *o, void *out)  { cb("FUN_0054a7e8", P(o), P(out), 0, 0); }
-s32  FUN_0036f798(s32 a, s32 b)  { return (s32)cb("FUN_0036f798", A(a), A(b), 0, 0); }
 s32  FUN_002f3278(s32 a, s32 b)  { return (s32)cb("FUN_002f3278", A(a), A(b), 0, 0); }
 s32  FUN_0030b6b0(s32 a, s32 b, s32 c) { return (s32)cb("FUN_0030b6b0", A(a), A(b), A(c), 0); }
 u32  game_ra(void)               { return 0xDEAD0000u; }
