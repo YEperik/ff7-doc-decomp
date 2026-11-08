@@ -61,6 +61,7 @@ STORE = {1: "sb", 2: "sh", 4: "sw", 8: "sd", 16: "sq"}
 class Compiler:
     def __init__(self, cfile, include_dirs, symbols=None):
         self.symbols = symbols or {}
+        self.flags = set(re.findall(r"/\*\s*cc:\s*([\w-]+)\s*\*/", open(cfile).read()))      # per-file compiler options, e.g. /* cc: nosibcall */
         here = os.path.dirname(os.path.abspath(__file__))
         cmd = ["gcc", "-E", "-P", "-nostdinc", "-DCC_PARSE", "-D__attribute__(x)=", "-I", os.path.join(here, "cc_fake")] + sum([["-I", d] for d in include_dirs], []) + [cfile]
         text = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
@@ -78,8 +79,11 @@ class Compiler:
             if p.name is None: continue
             if i > 3: raise Unsupported("more than 4 parameters")
             self.params[p.name] = V(reg="a%d" % i, t=self.types.resolve(p.type))
-        self.rett = self.types.resolve(self.ft.type); self.ret_value = None; self.used_params = set(); self.locals = {}; self.base2 = {}; self.fixed_lui = set()
-        body = fd.body.block_items or []
+        self.rett = self.types.resolve(self.ft.type); self.ret_value = None; self.used_params = set(); self.locals = {}; self.base2 = {}; self.fixed_lui = set(); self.store_const = set(); self.tail = False
+        body = fd.body.block_items or []; self.last_stmt = body[-1] if body else None; self.pre_ret = None
+        ls = self.last_stmt
+        if isinstance(ls, c_ast.Return) and isinstance(ls.expr, c_ast.ID) and ls.expr.name in self.params and ls.expr.name not in self.locals:
+            pr = self.params[ls.expr.name].reg; self.used_params.add(pr); d = self.tmp(); self.emit(I("daddu", d, a=pr, b="zero")); self.pre_ret = d
         for st in body: self.stmt(st)
         return self.finish()
 
@@ -89,12 +93,15 @@ class Compiler:
     def stmt(self, st):
         if isinstance(st, c_ast.Return):
             if st.expr is None: return
+            if self.pre_ret is not None and st is self.last_stmt: self.ret_value = self.pre_ret; return
             v = self.expr(st.expr)
-            self.ret_value = self.reg(v); return
+            r = self.reg(v)
+            if r in self.PARAMS: d = self.tmp(); self.emit(I("daddu", d, a=r, b="zero")); r = d
+            self.ret_value = r; return
         if isinstance(st, c_ast.Assignment) and st.op == "=":
             self.assign(st); return
         if isinstance(st, c_ast.FuncCall):
-            self.call(st); return
+            self.call(st, tail=(st is self.last_stmt and self.rett.kind == "void" and "nosibcall" not in self.flags)); return
         if isinstance(st, c_ast.Decl):
             t = self.types.resolve(st.type)
             if st.init is None: raise Unsupported("uninitialised local")
@@ -105,7 +112,7 @@ class Compiler:
         if v.reg is not None:
             if v.reg.startswith("a"): self.used_params.add(v.reg)
             return v.reg
-        d = self.tmp(); self.emit(I("li", d, imm=v.imm)); return d
+        return self.li32(v.imm)
 
     def emit(self, i): self.ir.append(i); return i
 
@@ -128,6 +135,12 @@ class Compiler:
             ty = self.type_of_deref(n.expr); c = self.const(n.expr)
             if c is not None: return (None, c, ty)
             v = self.expr(n.expr); return (self.reg(v), 0, ty)
+        if isinstance(n, c_ast.ArrayRef):
+            idx = self.const(n.subscript)
+            if idx is None: raise Unsupported("variable array index")
+            v = self.expr(n.name)
+            if v.t.kind != "ptr" or v.t.target is None: raise Unsupported("index of non-pointer")
+            return (self.reg(v), idx * v.t.target.size, v.t.target)
         if isinstance(n, c_ast.StructRef):
             if n.type != "->": raise Unsupported("struct value member")
             v = self.expr(n.name); st = v.t.target
@@ -166,7 +179,7 @@ class Compiler:
 
     # ---------- expressions
     def expr(self, n):
-        c = self.const(n) if isinstance(n, (c_ast.Constant,)) else None
+        c = self.const(n) if isinstance(n, (c_ast.Constant,)) or (isinstance(n, c_ast.UnaryOp) and n.op == "-") else None
         if c is not None: return V(imm=c)
         if isinstance(n, c_ast.ID):
             if n.name in self.locals: return self.locals[n.name]
@@ -180,7 +193,7 @@ class Compiler:
             raise Unsupported("narrowing cast")
         if isinstance(n, c_ast.UnaryOp) and n.op == "*":
             base, off, t = self.mem_of(n); return self.load(base, off, t)
-        if isinstance(n, c_ast.StructRef):
+        if isinstance(n, (c_ast.StructRef, c_ast.ArrayRef)):
             base, off, t = self.mem_of(n); return self.load(base, off, t)
         if isinstance(n, c_ast.UnaryOp) and n.op == "!":
             v = self.expr(n.expr); d = self.tmp(); self.emit(I("sltiu", d, a=self.reg(v), imm=1)); return V(reg=d)
@@ -229,12 +242,16 @@ class Compiler:
         raise Unsupported("operator " + op)
 
     def is_mem(self, n):
-        return isinstance(n, c_ast.StructRef) or (isinstance(n, c_ast.UnaryOp) and n.op == "*") or (isinstance(n, c_ast.Cast) and self.is_mem(n.expr))
+        return isinstance(n, (c_ast.StructRef, c_ast.ArrayRef)) or (isinstance(n, c_ast.UnaryOp) and n.op == "*") or (isinstance(n, c_ast.Cast) and self.is_mem(n.expr))
 
     def assign(self, st):
-        base, off, t = self.mem_of(st.lvalue); rv = self.rvalue_for_store(st.rvalue, t)
+        base, off, t = self.mem_of(st.lvalue)
         if t.size not in STORE: raise Unsupported("store size")
-        b, o = self.addr_parts(base, off)
+        b, o = self.addr_parts(base, off)                       # the address is formed before the value
+        c = self.const(st.rvalue) if t.kind != "struct" else None
+        if c == 0: rv = "zero"
+        elif c is not None: rv = self.reg(V(imm=c)); self.store_const.add(rv)
+        else: rv = self.rvalue_for_store(st.rvalue, t)
         self.emit(I(STORE[t.size], a=b, b=rv, imm=o, mem=True, store=True))
 
     def rvalue_for_store(self, n, t):
@@ -266,13 +283,13 @@ class Compiler:
         if lo == 0: return t1
         t2 = self.tmp(); self.emit(I("addiu", t2, a=t1, imm=lo)); return t2
 
-    def call(self, n):
-        if self.has_call: raise Unsupported("more than one call")
+    def call(self, n, tail=False):
+        if self.has_call or self.tail: raise Unsupported("more than one call")
         if not isinstance(n.name, c_ast.ID): raise Unsupported("indirect call")
         tgt = self.sym(n.name.name)
         args = n.args.exprs if n.args else []
         if len(args) > 4: raise Unsupported("more than 4 arguments")
-        self.has_call = True; moved = set()
+        moved = set()
         for i, a in enumerate(args):                               # parameters that would be clobbered are copied first
             if isinstance(a, c_ast.ID) and a.name in self.params and a.name not in self.locals:
                 k = int(self.params[a.name].reg[1:])
@@ -288,6 +305,9 @@ class Compiler:
                 if int(v.reg[1:]) != i: raise Unsupported("argument register shuffle")
                 self.used_params.add(v.reg)
             else: self.set_fixed(v.reg, "a%d" % i)
+        if tail and not moved:                                     # sibling call: no frame, `j` with the last argument in its delay slot
+            self.tail = True; self.emit(I("j", imm=tgt, cls="call")); return V(imm=0)
+        self.has_call = True
         rv = self.tmp(); self.callres = rv; self.fixed[rv] = "v0"
         self.emit(I("jal", rv, imm=tgt, cls="call")); return V(reg=rv, t=self.rett if self.rett.kind != "void" else INT)
 
@@ -317,9 +337,9 @@ class Compiler:
                     if x in readers: readers[x].append(i)
             if ins.mem:
                 for j in memops:
-                    if ir[j].store or ins.store: dep(i, j, 1)
+                    if ir[j].store or ins.store: dep(i, j, 1); war[i].add(j)      # ordering only: not part of the critical path
                 memops.append(i)
-            if ins.op == "jal":
+            if ins.op in ("jal", "j"):
                 for j in range(i): dep(i, j, 1)
                 barrier = i
             elif barrier is not None: dep(i, barrier, 1)
@@ -347,6 +367,13 @@ class Compiler:
             pre = [x for k, x in enumerate(sched[:jj]) if k != slot]
             lines = [self.render(x, regs) for x in pre] + [self.render(sched[jj], regs), self.render(sched[slot], regs) if slot is not None else "nop"]
             lines += [self.render(x, regs) for x in sched[jj + 1:]] + ["jr $ra", "addiu $sp, $sp, %d" % frame]
+        elif self.tail:
+            jj = next(k for k, x in enumerate(sched) if x.op == "j"); slot = None
+            for k in range(jj - 1, -1, -1):
+                c = sched[k]
+                if all(not self.conflict(c, m, regs) for m in sched[k + 1:jj]): slot = k; break
+            pre = [x for k, x in enumerate(sched[:jj]) if k != slot]
+            lines = [self.render(x, regs) for x in pre] + [self.render(sched[jj], regs), self.render(sched[slot], regs) if slot is not None else "nop"]
         else:
             lines = [self.render(x, regs) for x in sched]
             if lines: lines.insert(len(lines) - 1, "jr $ra")
@@ -367,9 +394,9 @@ class Compiler:
             ready = [i for i in range(n) if i not in issue and all(j in issue and issue[j] + lat <= cyc for j, lat in deps[i].items())]
             for i in sorted(ready, key=lambda i: (not ir[i].boost, -prio[i], i)):
                 if len(picked) == 2: break
-                if ir[i].op == "jal" and picked: continue
+                if ir[i].op in ("jal", "j") and picked: continue
                 if ir[i].mem and any(ir[j].mem for j in picked): continue
-                if picked and ir[picked[0]].op == "jal": break
+                if picked and ir[picked[0]].op in ("jal", "j"): break
                 picked.append(i)
             for i in picked: issue[i] = cyc; order.append(i)
         return order
@@ -414,7 +441,7 @@ class Compiler:
                     for x in ((ins.a, ins.b) if ins.op != "sltu" else (ins.b, ins.a)):
                         if x and x in regs and x not in ("zero", "sp", "ra") and last.get(x) == k and regs[x] != "v0": r = regs[x]; break
                 if r is None:
-                    order = ["a0", "a1", "a2", "a3", "v1", "v0", "t0", "t1", "t2", "t3"] if (ji is not None and k > ji and ins.op == "lui") else pref
+                    order = ["a0", "a1", "a2", "a3", "v1", "v0", "t0", "t1", "t2", "t3"] if (ji is not None and k > ji and ins.op == "lui") else (["v1", "v0"] + pref[2:] if self.store_const and ins.op == "lui" else pref)
                     for c in order:
                         if quad and c in ("v0", "v1"): continue
                         held = occupied.get(c)
@@ -430,6 +457,7 @@ class Compiler:
         R = lambda v: "$" + regs[v]
         if x.op == "lui": return "lui %s, %d" % (R(x.d), x.imm)
         if x.op == "jal": return "jal 0x%x" % x.imm
+        if x.op == "j": return "j 0x%x" % x.imm
         if x.op == "li":
             v = x.imm & 0xFFFFFFFF; s = v - (1 << 32) if v & 0x80000000 else v
             if v == 0: return "daddu %s, $zero, $zero" % R(x.d)
