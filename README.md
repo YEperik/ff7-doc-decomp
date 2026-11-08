@@ -19,10 +19,10 @@
 
 | | Done | Total |
 |---|---:|---:|
-| Functions | 51 (0.39%) | 12932 |
-| Code bytes | 0.12% | 4,390,020 |
-| Byte-exact | 18 (0.01% of bytes) | 12932 |
-| Most-called 300 | 36 (12.0%) | 300 |
+| Functions | 108 (0.83%) | 12938 |
+| Code bytes | 0.16% | 4,390,020 |
+| Byte-exact | 39 (0.02% of bytes) | 12938 |
+| Most-called 300 | 88 (29.3%) | 300 |
 
 Details and history: [docs/PROGRESS.md](docs/PROGRESS.md)
 <!-- PROGRESS:END -->
