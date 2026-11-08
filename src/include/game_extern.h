@@ -15,7 +15,7 @@ extern s32  RotateThreadReadyQueue(s32 prio);   /* 0x00451f90  syscall 0x2b */
 extern void FUN_00251150(void *p);          /* 0x00251150 */
 extern u32  FUN_002510b8(u32 size, u32 a, u32 tag);   /* 0x002510b8 */
 extern void FUN_0054a7e8(void *obj, void *out);       /* 0x0054a7e8  fills a 0x40-byte buffer */
-extern s32  FUN_0036f798(s32 a, s32 b);     /* 0x0036f798 */
+extern void FUN_0036f798(s32 a, s32 b);     /* 0x0036f798 */
 extern s32  FUN_002f3278(s32 a, s32 b);     /* 0x002f3278 */
 extern s32  FUN_0030b6b0(s32 a, s32 b, s32 c);        /* 0x0030b6b0 */
 
