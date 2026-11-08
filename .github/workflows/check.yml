@@ -8,4 +8,5 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: python -m compileall -q ps2an scripts
-      - run: python scripts/verify_public.py .
+      - run: python scripts/check_repo.py .
+      - run: python -m ps2an progress --check
