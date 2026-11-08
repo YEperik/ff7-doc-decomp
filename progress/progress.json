@@ -1,31 +1,31 @@
 {
-  "functions_done": 51,
-  "functions_total": 12932,
-  "functions_pct": 0.3943705536653263,
-  "bytes_done": 5320,
+  "functions_done": 108,
+  "functions_total": 12938,
+  "functions_pct": 0.8347503478126449,
+  "bytes_done": 7176,
   "bytes_total": 4390020,
-  "bytes_pct": 0.12118395815964392,
-  "matched_done": 18,
-  "matched_bytes": 424,
-  "matched_pct": 0.009658270349565606,
+  "bytes_pct": 0.16346166987849714,
+  "matched_done": 39,
+  "matched_bytes": 768,
+  "matched_pct": 0.017494225538835815,
   "identified_only": 71,
-  "hubs_done": 36,
+  "hubs_done": 88,
   "hubs_total": 300,
-  "hubs_pct": 12.0,
-  "callsites_done": 5033,
+  "hubs_pct": 29.333333333333332,
+  "callsites_done": 6379,
   "callsites_total": 13352,
-  "callsites_pct": 37.694727381665665,
+  "callsites_pct": 47.775614140203714,
   "sections": {
     ".text": {
-      "done": 47,
-      "total": 9661,
-      "bytes_done": 5160,
+      "done": 99,
+      "total": 9667,
+      "bytes_done": 6864,
       "bytes_total": 3541268
     },
     ".kel_extended_program_section": {
-      "done": 4,
+      "done": 7,
       "total": 1865,
-      "bytes_done": 160,
+      "bytes_done": 256,
       "bytes_total": 518016
     },
     ".kel_net": {
@@ -35,9 +35,9 @@
       "bytes_total": 212224
     },
     ".kel_draw_section": {
-      "done": 0,
+      "done": 2,
       "total": 211,
-      "bytes_done": 0,
+      "bytes_done": 56,
       "bytes_total": 53040
     },
     ".kel_title": {
