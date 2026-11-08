@@ -103,8 +103,8 @@ def g_gv4fc(r, env):
 def g_obj54(r, env):
     if r.random() < .5: env.w32(ARENA + 0x108, 0)
     return [ARENA + 0x100, ARENA + 0x2000 + 16 * r.randint(0, 20)]
-def g_5a3a48(r, env): env.w32(0x46f2e0, ARENA + 0x5000); return [ri32(r) & M32, ri32(r)]
-def g_5a39e8(r, env): env.w32(0x46f2e0, ARENA + 0x5000); return [ARENA, r.choice([0, 1, 2, 3, 0x81, -1])]
+def g_5a3a48(r, env): env.w32(0x46f2e0, ARENA + 0x5000); env.w32(ARENA + 0x5014, ARENA + 0x7000); return [r.choice([0, ARENA + 0x7100 + 8 * r.randint(0, 10)]), ri32(r)]
+def g_5a39e8(r, env): env.w32(0x46f2e0, ARENA + 0x5000); env.w32(ARENA + 0x5014, ARENA + 0x7000); return [ARENA, r.choice([0, 1, 2, 3, 0x81, -1])]
 def g_2a8060(r, env): env.w32(0x4ec258, ARENA + 0x6000); return [r.choice([0, 0, ri32(r), 5])]
 def g_2e14f8(r, env): return [ri32(r), ri32(r), ri32(r), r.choice([1, 0, 2, -1, ri32(r)])]
 
@@ -116,7 +116,7 @@ CALLEES = {
  "FUN_0042d398": (0x0042d398, 1, "v", None), "FUN_00248fd0": (0x00248fd0, 1, "v", None),
  "RotateThreadReadyQueue": (0x00451f90, 1, "v", "rand"), "FUN_00251150": (0x00251150, 1, "v", None),
  "FUN_002510b8": (0x002510b8, 3, "vvv", "rand"), "FUN_0054a7e8": (0x0054a7e8, 2, "vo", None),
- "FUN_0036f798": (0x0036f798, 2, "vv", "rand"), "FUN_002f3278": (0x002f3278, 2, "vv", "rand"), "FUN_0030b6b0": (0x0030b6b0, 3, "vvv", "rand"),
+ "FUN_002f3278": (0x002f3278, 2, "vv", "rand"), "FUN_0030b6b0": (0x0030b6b0, 3, "vvv", "rand"),
  "break": (None, 0, "", None),
 }
 class World:
@@ -132,7 +132,51 @@ class World:
         if ret == "rand": return s32(self.rng.getrandbits(32))
         return 0
 
-GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000, 0x4df000, 0x46f000, 0x4ec000]
+def g_3s(r, env): return [ri32(r), ri32(r), ri32(r)]
+def g_setflag(r, env): return [r.randint(-3, 70), r.choice([0, 1, 5, -1])]
+def g_onarg(r, env): return [r.choice([0, 1, 5, -1])]
+def g_l5035(r, env): setup_lock(r, env, 0x5035a8); return []
+def g_obj0(r, env): return [ARENA]
+def g_objon(r, env): return [ARENA, r.choice([0, 1, 3, -1])]
+def g_ptrarg(r, env): return [ARENA + 0x200]
+def g_3ee(r, env): env.w32(0x47dac0, ARENA + 0x1000); env.w32(ARENA + 0x1000, r.choice([0, 1, 5, -1, 100000, r.getrandbits(32)])); return []
+def g_5a79(r, env): return [ARENA, r.choice([0, 1, 2, 3, 4, 5, -1, 0x80000000, r.getrandbits(32)])]
+def _tab(r, env):
+    p = 0 if r.random() < .25 else ARENA + 0x6000; env.w32(0x46e400, p)
+    if p: env.w32(p, r.choice([0, 5, 0xff, 0x100, 0x101, r.getrandbits(32)]))
+def g_tab(r, env): _tab(r, env); return []
+def g_tab_i(r, env): _tab(r, env); return [r.choice([0, 5, 255, 256, -1, -300, 65543, 32767, -32768, ri32(r)])]
+def _gdf(r, env): env.w32(0x46df68, 0 if r.random() < .25 else ARENA + 0x1000)
+def g_gdf68(r, env): _gdf(r, env); return []
+def g_310b40(r, env):
+    _gdf(r, env); env.w32(ARENA + 0x1000 + 52, 0 if r.random() < .25 else ARENA + 0x3000); env.w32(ARENA + 0x3000 + 32, r.choice([0, 3, 5, 10, -1])); return [r.randint(-2, 12)]
+def g_fpush(r, env): return [ARENA, r.choice([0, ARENA + 0x4000 + 8 * r.randint(0, 10)])]
+def g_f24(r, env): env.w32(ARENA + 24, r.choice([0, r.getrandbits(32)])); return [ARENA]
+def g_setbit(r, env): return [ARENA, r.randint(-3, 70)]
+def g_shiftobj(r, env): return [ARENA, r.randint(-3, 70)]
+def g_i(r, env): return [ARENA, r.choice([0, 1, 5, 7, 8, 9, 0x3ff, 0x400, 0x401, -1, 0x80000000, r.getrandbits(32)])]
+def g_tbl4452(r, env): env.w32(ARENA + 4452, ARENA + 0x2000); return g_i(r, env)
+def g_3b66(r, env):
+    for k in range(8): env.w32(0x50dd60 + k * 0x28 + 4, r.choice([0, r.getrandbits(32)]))
+    return [ri32(r), r.choice([0, 1, 3, 7, 8, 9, -1, 0x80000000])]
+def g_317670(r, env): env.w32(ARENA + 156, r.choice([0, ARENA + 0x1000])); return [ARENA]
+def g_p2000(r, env): env.w32(ARENA + 2000, r.choice([0, ARENA + 0x1000])); return [ARENA]
+def g_3236(r, env): env.w32(0x46e490, r.choice([0, ARENA + 0x1000])); return []
+def g_31a9(r, env): env.write(ARENA + 4, struct.pack("<h", r.choice([-3, 0, 2, 8, 100]))); return [ARENA]
+def g_33e1(r, env):
+    env.w32(ARENA + 0x14, ARENA + 0x1000); env.write(ARENA + 0x1002, struct.pack("<h", r.choice([-3, 0, 3, 100, 1000])))
+    return [ARENA, r.choice([-1, 0, 1, 5, 99, -300, 65535, 70000, 0x12345, ri32(r)])]
+def g_2694(r, env):
+    for i in range(3):
+        env.w32(0x4e4e60 + i * 0x70 + 84, r.choice([5, r.getrandbits(32)])); env.w32(0x4e4e60 + i * 0x70 + 92, r.choice([0, 1, 7]))
+    return [s32(r.choice([5, r.getrandbits(32), 0]))]        # 32-bit integer arguments are passed sign-extended
+def g_3d96(r, env): return [ARENA, r.choice([1, -1, 2, 3, -5, 100, -32768, 0x7fff, 65537, 0x1fff3, -7])]
+def g_mat(r, env): return [ARENA + 16 * r.randint(0, 100)]
+def g_lock8(r, env): setup_lock(r, env, ARENA + 8); return [ARENA]
+def g_fpop(r, env): env.w32(ARENA + 24, r.choice([0, ARENA + 0x4100])); return [ARENA]
+def g_pushcell(r, env): c, _ = p_ctx(r, env); return [c, ARENA + 0x2000 + 8 * r.randint(0, 20)]
+
+GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000, 0x4df000, 0x46f000, 0x4ec000, 0x46e000, 0x4f5000, 0x47d000, 0x503000, 0x4f3000, 0x487000, 0x4b2000, 0x4e4000, 0x50d000]
 # name, guest address, argument generator, return kind ("s32" | "ptr" | "void")
 SPECS = [
  ("cstack_pop", 0x003aa140, g_pop, "s32"), ("cstack_push_int", 0x003aa0c0, g_push, "void"), ("cstack_drop", 0x003aa108, g_drop, "void"),
@@ -148,8 +192,29 @@ SPECS = [
  ("FUN_002521f0", 0x002521f0, g_free, "void"), ("FUN_00252160", 0x00252160, g_alloc, "s32"), ("FUN_002521a8", 0x002521a8, g_alloc, "s32"),
  ("FUN_00241de8", 0x00241de8, g_none, "s32"), ("FUN_00376198", 0x00376198, g_objlock, "void"), ("FUN_003761e8", 0x003761e8, g_objlock, "void"),
  ("get_gvar_0046b4fc", 0x002424a0, g_gv4fc, "s32"), ("FUN_00326540", 0x00326540, g_gv4fc, "s32"),
- ("FUN_0054a920", 0x0054a920, g_obj54, "void"), ("FUN_005a3a48", 0x005a3a48, g_5a3a48, "s32"), ("FUN_005a39e8", 0x005a39e8, g_5a39e8, "void"),
+ ("FUN_0054a920", 0x0054a920, g_obj54, "void"), ("FUN_005a3a48", 0x005a3a48, g_5a3a48, "void"), ("FUN_005a39e8", 0x005a39e8, g_5a39e8, "void"),
  ("FUN_002a8060", 0x002a8060, g_2a8060, "void"), ("FUN_002e14f8", 0x002e14f8, g_2e14f8, "s32"),
+ ("get_gvar_0047dadc", 0x003ef028, g_none, "s32"), ("get_gvar_0046b4dc", 0x00242450, g_none, "s32"), ("get_gvar_0046e780", 0x0033ab08, g_none, "s32"),
+ ("get_gvar_0046de0c", 0x0030b650, g_none, "s32"), ("FUN_003e1f80", 0x003e1f80, g_none, "void"), ("FUN_003e1f10", 0x003e1f10, g_3s, "void"),
+ ("FUN_004250f0", 0x004250f0, g_none, "void"), ("FUN_004250f8", 0x004250f8, g_none, "void"), ("FUN_00425108", 0x00425108, g_none, "void"),
+ ("set_flag_004b8b80", 0x00241378, g_setflag, "void"), ("set_flag_004b8cc8", 0x00241990, g_setflag, "void"),
+ ("FUN_003e17f8", 0x003e17f8, g_onarg, "void"), ("FUN_003262d8", 0x003262d8, g_shift, "s32"),
+ ("lock_acquire_005035a8", 0x00425098, g_l5035, "void"), ("lock_release_005035a8", 0x004250a8, g_l5035, "void"),
+ ("FUN_0042d628", 0x0042d628, g_obj0, "void"), ("FUN_0042d648", 0x0042d648, g_obj0, "void"),
+ ("FUN_00341790", 0x00341790, g_objon, "void"), ("FUN_00342348", 0x00342348, g_obj0, "s32"), ("FUN_003d49c8", 0x003d49c8, g_objon, "void"),
+ ("FUN_00249860", 0x00249860, g_ptrarg, "void"), ("FUN_005a39b8", 0x005a39b8, g_obj0, "s32"), ("FUN_003ee808", 0x003ee808, g_3ee, "s32"),
+ ("FUN_005a7918", 0x005a7918, g_5a79, "s32"), ("FUN_00318cd8", 0x00318cd8, g_tab, "s32"), ("FUN_00318c38", 0x00318c38, g_tab_i, "s32"),
+ ("FUN_00310c80", 0x00310c80, g_gdf68, "s32"), ("FUN_00310ca0", 0x00310ca0, g_gdf68, "s32"), ("FUN_00310b40", 0x00310b40, g_310b40, "s32"),
+ ("FUN_0036f798", 0x0036f798, g_fpush, "void"), ("FUN_0036f770", 0x0036f770, g_fpop, "s32"), ("cstack_push_cell", 0x003aa0e8, g_pushcell, "void"),
+ ("get_gvar_0046b310", 0x0023ec60, g_none, "s32"), ("get_gvar_004f3234", 0x003dce58, g_none, "s32"),
+ ("FUN_003cb560", 0x003cb560, g_objon, "void"), ("FUN_003d49f8", 0x003d49f8, g_objon, "void"), ("FUN_005a7538", 0x005a7538, g_setbit, "void"), ("FUN_00315778", 0x00315778, g_shiftobj, "s32"),
+ ("FUN_00563488", 0x00563488, g_obj0, "s32"), ("FUN_003177e8", 0x003177e8, g_obj0, "s32"), ("FUN_00317670", 0x00317670, g_317670, "s32"),
+ ("FUN_00341a00", 0x00341a00, g_p2000, "s32"), ("FUN_003236e8", 0x003236e8, g_3236, "s32"), ("FUN_0053e240", 0x0053e240, g_tbl4452, "s32"),
+ ("FUN_003b6610", 0x003b6610, g_3b66, "gptr"), ("FUN_0031a9d0", 0x0031a9d0, g_31a9, "s32"), ("FUN_0033e158", 0x0033e158, g_33e1, "s32"),
+ ("FUN_00240f28", 0x00240f28, g_none, "s32"), ("FUN_002694e8", 0x002694e8, g_2694, "gptr"), ("FUN_003d96d0", 0x003d96d0, g_3d96, "void"),
+ ("FUN_002d84d0", 0x002d84d0, g_mat, "void"), ("FUN_003f1b68", 0x003f1b68, g_obj0, "s32"),
+ ("FUN_0041f358", 0x0041f358, g_lock8, "void"), ("FUN_0041f360", 0x0041f360, g_lock8, "void"),
+ ("FUN_0033ab18", 0x0033ab18, g_obj0, "s32"), ("FUN_0036f7b8", 0x0036f7b8, g_f24, "s32"), ("FUN_0036f7c8", 0x0036f7c8, g_f24, "s32"),
 ]
 
 def check_manifest():
@@ -186,6 +251,7 @@ def main(elf_path, trials=500):
             f.argtypes = [ctypes.c_int64 if a_ < 0 else ctypes.c_uint64 for a_ in args]
             hw = World(t, lambda a_, n: env.host(a_, n), lambda a_, d: host_write(env, a_, d), list(LOCKQS)); cur["w"] = hw
             cr = f(*args); cr = (cr or 0) & M32 if rk != "void" else 0
+            if rk == "gptr" and cr: cr = (cr - GV_OFF) & M32                     # pointer into a global object: host address carries the mapping offset
             mem = SnapMem(snaps); cpu = CPU(fetch, mem)
             ew = World(t, lambda a_, n: mem.rd(a_, n), lambda a_, d: mem.wr(a_, d), list(LOCKQS))
             for cn, (ga, _ar, _k, _rt) in CALLEES.items():                   # callees that are not reconstructed run as mocks
