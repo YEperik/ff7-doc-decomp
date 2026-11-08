@@ -121,7 +121,7 @@ address,size,section,name
 0x0023e880,48,.text,FUN_0023e880
 0x0023e8b0,464,.text,FUN_0023e8b0
 0x0023ea80,480,.text,FUN_0023ea80
-0x0023ec60,16,.text,FUN_0023ec60
+0x0023ec60,16,.text,get_gvar_0046b310
 0x0023ec70,16,.text,FUN_0023ec70
 0x0023ec80,1336,.text,FUN_0023ec80
 0x0023f1b8,104,.text,FUN_0023f1b8
@@ -164,7 +164,7 @@ address,size,section,name
 0x00241018,800,.text,FUN_00241018
 0x00241338,32,.text,FUN_00241338
 0x00241358,32,.text,FUN_00241358
-0x00241378,72,.text,FUN_00241378
+0x00241378,72,.text,set_flag_004b8b80
 0x002413c0,32,.text,has_flag_004b8b80
 0x002413e0,16,.text,set_gvar_0046b3d4
 0x002413f0,16,.text,FUN_002413f0
@@ -184,7 +184,7 @@ address,size,section,name
 0x002418c8,56,.text,FUN_002418c8
 0x00241900,128,.text,FUN_00241900
 0x00241980,16,.text,FUN_00241980
-0x00241990,72,.text,FUN_00241990
+0x00241990,72,.text,set_flag_004b8cc8
 0x002419d8,24,.text,get_flag_004b8cc8
 0x002419f0,16,.text,set_gvar_004b8d9c
 0x00241a00,16,.text,get_gvar_004b8d9c
@@ -233,7 +233,7 @@ address,size,section,name
 0x00242420,16,.text,FUN_00242420
 0x00242430,16,.text,FUN_00242430
 0x00242440,16,.text,FUN_00242440
-0x00242450,16,.text,FUN_00242450
+0x00242450,16,.text,get_gvar_0046b4dc
 0x00242460,48,.text,FUN_00242460
 0x00242490,16,.text,FUN_00242490
 0x002424a0,16,.text,get_gvar_0046b4fc
@@ -3346,7 +3346,7 @@ address,size,section,name
 0x0030b4f8,56,.text,FUN_0030b4f8
 0x0030b530,136,.text,FUN_0030b530
 0x0030b5b8,152,.text,FUN_0030b5b8
-0x0030b650,16,.text,FUN_0030b650
+0x0030b650,16,.text,get_gvar_0046de0c
 0x0030b660,80,.text,FUN_0030b660
 0x0030b6b0,248,.text,FUN_0030b6b0
 0x0030b7a8,256,.text,FUN_0030b7a8
@@ -3555,7 +3555,8 @@ address,size,section,name
 0x00315410,464,.text,FUN_00315410
 0x003155e0,296,.text,FUN_003155e0
 0x00315708,112,.text,FUN_00315708
-0x00315778,32,.text,FUN_00315778
+0x00315778,24,.text,FUN_00315778
+0x00315790,8,.text,FUN_00315790
 0x00315798,88,.text,FUN_00315798
 0x003157f0,320,.text,FUN_003157f0
 0x00315930,200,.text,FUN_00315930
@@ -4343,7 +4344,8 @@ address,size,section,name
 0x0033aa50,120,.text,FUN_0033aa50
 0x0033aac8,32,.text,FUN_0033aac8
 0x0033aae8,32,.text,FUN_0033aae8
-0x0033ab08,48,.text,FUN_0033ab08
+0x0033ab08,16,.text,get_gvar_0046e780
+0x0033ab18,32,.text,FUN_0033ab18
 0x0033ab38,56,.text,FUN_0033ab38
 0x0033ab70,72,.text,FUN_0033ab70
 0x0033abb8,40,.text,FUN_0033abb8
@@ -5338,7 +5340,9 @@ address,size,section,name
 0x0036f688,192,.text,FUN_0036f688
 0x0036f748,40,.text,FUN_0036f748
 0x0036f770,40,.text,FUN_0036f770
-0x0036f798,56,.text,FUN_0036f798
+0x0036f798,32,.text,FUN_0036f798
+0x0036f7b8,16,.text,FUN_0036f7b8
+0x0036f7c8,8,.text,FUN_0036f7c8
 0x0036f7d0,320,.text,FUN_0036f7d0
 0x0036f910,512,.text,FUN_0036f910
 0x0036fb10,96,.text,FUN_0036fb10
@@ -6185,7 +6189,7 @@ address,size,section,name
 0x003aa078,32,.text,FUN_003aa078
 0x003aa098,40,.text,FUN_003aa098
 0x003aa0c0,40,.text,cstack_push_int
-0x003aa0e8,32,.text,FUN_003aa0e8
+0x003aa0e8,32,.text,cstack_push_cell
 0x003aa108,56,.text,cstack_drop
 0x003aa140,32,.text,cstack_pop
 0x003aa160,32,.text,FUN_003aa160
@@ -7255,7 +7259,7 @@ address,size,section,name
 0x003dcc88,24,.text,FUN_003dcc88
 0x003dcca0,248,.text,FUN_003dcca0
 0x003dcd98,192,.text,FUN_003dcd98
-0x003dce58,16,.text,FUN_003dce58
+0x003dce58,16,.text,get_gvar_004f3234
 0x003dce68,16,.text,FUN_003dce68
 0x003dce78,32,.text,FUN_003dce78
 0x003dce98,16,.text,FUN_003dce98
@@ -7725,7 +7729,7 @@ address,size,section,name
 0x003eef10,144,.text,FUN_003eef10
 0x003eefa0,56,.text,FUN_003eefa0
 0x003eefd8,80,.text,FUN_003eefd8
-0x003ef028,16,.text,FUN_003ef028
+0x003ef028,16,.text,get_gvar_0047dadc
 0x003ef038,288,.text,FUN_003ef038
 0x003ef158,144,.text,FUN_003ef158
 0x003ef1e8,232,.text,FUN_003ef1e8
@@ -8756,11 +8760,13 @@ address,size,section,name
 0x00424e28,224,.text,FUN_00424e28
 0x00424f08,272,.text,FUN_00424f08
 0x00425018,128,.text,FUN_00425018
-0x00425098,16,.text,FUN_00425098
-0x004250a8,16,.text,FUN_004250a8
+0x00425098,16,.text,lock_acquire_005035a8
+0x004250a8,16,.text,lock_release_005035a8
 0x004250b8,40,.text,FUN_004250b8
 0x004250e0,16,.text,FUN_004250e0
-0x004250f0,40,.text,FUN_004250f0
+0x004250f0,8,.text,FUN_004250f0
+0x004250f8,16,.text,FUN_004250f8
+0x00425108,16,.text,FUN_00425108
 0x00425118,80,.text,FUN_00425118
 0x00425168,56,.text,FUN_00425168
 0x004251a0,104,.text,FUN_004251a0
