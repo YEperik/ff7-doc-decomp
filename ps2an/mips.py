@@ -16,6 +16,11 @@ _MMI = {(0x08, 0x00): "paddw", (0x08, 0x01): "psubw", (0x08, 0x02): "pcgtw", (0x
  (0x08, 0x06): "pcgth", (0x08, 0x07): "pmaxh", (0x08, 0x08): "paddb", (0x08, 0x09): "psubb", (0x08, 0x0A): "pcgtb", (0x08, 0x12): "pextlw", (0x08, 0x13): "ppacw",
  (0x28, 0x02): "pceqw", (0x28, 0x06): "pceqh", (0x28, 0x0A): "pceqb",
  (0x09, 0x0E): "pcpyld", (0x09, 0x12): "pand", (0x09, 0x13): "pxor", (0x29, 0x0E): "pcpyud", (0x29, 0x12): "por", (0x29, 0x13): "pnor"}
+_FS = {0: "add.s", 1: "sub.s", 2: "mul.s", 3: "div.s", 4: "sqrt.s", 5: "abs.s", 6: "mov.s", 7: "neg.s", 0x16: "rsqrt.s", 0x18: "adda.s", 0x19: "suba.s",
+ 0x1A: "mula.s", 0x1C: "madd.s", 0x1D: "msub.s", 0x1E: "madda.s", 0x1F: "msuba.s", 0x24: "cvt.w.s", 0x28: "max.s", 0x29: "min.s", 0x30: "c.f.s", 0x32: "c.eq.s", 0x34: "c.lt.s", 0x36: "c.le.s"}
+_FS3 = {"add.s", "sub.s", "mul.s", "div.s", "rsqrt.s", "madd.s", "msub.s", "max.s", "min.s"}        # fd, fs, ft
+_FS2 = {"abs.s", "mov.s", "neg.s", "cvt.w.s"}                                                       # fd, fs
+
 def is_jr_ra(w): return w == 0x03E00008
 def is_nop(w): return w == 0
 def is_jal(w): return w >> 26 == 3
@@ -38,6 +43,7 @@ def decode(w, pc):
         if f in (16,18): return "%s $%s" % (m, R[rd])
         if f in (17,19,41): return "%s $%s" % (m, R[rs])
         if f == 40: return "mfsa $%s" % R[rd]
+        if f in (24, 25) and rd: return "%s $%s, $%s, $%s" % (m, R[rd], R[rs], R[rt])
         if f in (24,25,26,27): return "%s $%s, $%s" % (m, R[rs], R[rt])
         if f in (12, 13): c = (w >> 6) & 0xFFFFF; return m if c == 0 else "%s 0x%x" % (m, c)
         if f == 15: return m
@@ -62,5 +68,17 @@ def decode(w, pc):
         if key in _MMI: return "%s $%s, $%s, $%s" % (_MMI[key], R[rd], R[rs], R[rt])
         if key == (0x29, 0x1B): return "pcpyh $%s, $%s" % (R[rd], R[rt])
     if op == 16 and rs in (0, 4): return "%s $%s, $%d" % ("mfc0" if rs == 0 else "mtc0", R[rt], rd)
-    if op == 17 and rs in (0, 4): return "%s $%s, $f%d" % ("mfc1" if rs == 0 else "mtc1", R[rt], rd)
+    if op == 17:
+        fd, fs, ft = sa, rd, rt
+        if rs in (0, 4): return "%s $%s, $f%d" % ("mfc1" if rs == 0 else "mtc1", R[rt], fs)
+        if rs in (2, 6): return "%s $%s, $%d" % ("cfc1" if rs == 2 else "ctc1", R[rt], fs)
+        if rs == 8 and rt in (0, 1, 2, 3): return "%s 0x%x" % (("bc1f", "bc1t", "bc1fl", "bc1tl")[rt], pc + 4 + (s16(imm) << 2))
+        if rs == 20 and (w & 63) == 32: return "cvt.s.w $f%d, $f%d" % (fd, fs)
+        if rs == 16 and (w & 63) in _FS:
+            m = _FS[w & 63]
+            if m in _FS3: return "%s $f%d, $f%d, $f%d" % (m, fd, fs, ft)
+            if m in _FS2: return "%s $f%d, $f%d" % (m, fd, fs)
+            if m == "sqrt.s": return "sqrt.s $f%d, $f%d" % (fd, ft)
+            return "%s $f%d, $f%d" % (m, fs, ft)
+        return ".word 0x%08x" % w
     return ".word 0x%08x" % w
