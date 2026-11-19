@@ -1,6 +1,7 @@
 """Minimal MIPS III/R5900 integer interpreter for differential testing of leaf functions.
 Not a full emulator: no COP/MMI/VU, no syscalls, no interrupts. Unknown opcodes raise Unsupported."""
 import struct
+from fractions import Fraction
 from .mips import s16
 
 M32 = 0xFFFFFFFF; M64 = 0xFFFFFFFFFFFFFFFF
@@ -8,6 +9,37 @@ M32 = 0xFFFFFFFF; M64 = 0xFFFFFFFFFFFFFFFF
 MMI_OK = {(0x08, 0x01), (0x08, 0x09), (0x09, 0x0E), (0x09, 0x12), (0x09, 0x13), (0x29, 0x0E), (0x29, 0x13), (0x29, 0x1B)}
 def lanes(v, bits): return [(v >> (i * bits)) & ((1 << bits) - 1) for i in range(128 // bits)]
 def join(l, bits): return sum(x << (i * bits) for i, x in enumerate(l))
+# ---- R5900 single precision: no NaN/Inf/denormals, results rounded toward zero, overflow clamps
+def f2q(b):
+    e = (b >> 23) & 255
+    if e == 0: return Fraction(0)                                   # denormals read as zero
+    m = (b & 0x7FFFFF) | 0x800000; v = Fraction(m) * (Fraction(2) ** (e - 150))
+    return -v if b >> 31 else v
+
+def q2f(q):
+    if q == 0: return 0
+    neg = q < 0; a = -q if neg else q
+    e = a.numerator.bit_length() - a.denominator.bit_length()
+    if Fraction(2) ** e > a: e -= 1
+    elif Fraction(2) ** (e + 1) <= a: e += 1
+    if e < -126: return 0                                           # flush to zero
+    if e > 127: return (0x80000000 if neg else 0) | 0x7FFFFFFF      # clamp to the largest magnitude
+    mant = int(a / (Fraction(2) ** (e - 23)))                      # truncation
+    return (0x80000000 if neg else 0) | ((e + 127) << 23) | (mant & 0x7FFFFF)
+
+FPU_OK = {("S", f) for f in (0, 1, 2, 3, 4, 5, 6, 7, 0x16, 0x24, 0x28, 0x29, 0x30, 0x32, 0x34, 0x36)} | {("W", 0x20)}
+def fpu_supported(w):
+    """True if the emulator implements this COP1/lwc1/swc1 word."""
+    op = w >> 26
+    if op in (0x31, 0x39): return True
+    if op != 0x11: return False
+    fmt = (w >> 21) & 31
+    if fmt in (0, 2, 4, 6): return True
+    if fmt == 8: return ((w >> 16) & 31) in (0, 1, 2, 3)
+    if fmt == 16: return ("S", w & 63) in FPU_OK
+    if fmt == 20: return ("W", w & 63) in FPU_OK
+    return False
+
 class Unsupported(Exception): pass
 class Stop(Exception): pass
 
@@ -27,10 +59,13 @@ class CPU:
     def __init__(self, code_reader, mem=None):
         self.r = [0] * 32; self.u = [0] * 32; self.hi = self.lo = 0; self.pc = 0
         self.fetch = code_reader; self.mem = mem or Mem(); self.steps = 0; self.seen = set()
+        self.fpr = [0] * 32; self.fcond = False; self.fcr31 = 0
         self.hooks = {}          # guest address -> callable(cpu): replaces the whole function (call + return)
         self.on_break = None     # callable(cpu) invoked by `break`; execution then continues
 
-    def run(self, entry, args=(), ra=0xDEAD0000, sp=0x7F000000, limit=200000):
+    def run(self, entry, args=(), ra=0xDEAD0000, sp=0x7F000000, limit=200000, fargs=()):
+        self.fpr = [0] * 32; self.fcond = False
+        for i, v in enumerate(fargs[:8]): self.fpr[12 + i] = v & M32            # float arguments in $f12..
         self.r = [0] * 32; self.u = [0] * 32; self.pc = entry; self.r[31] = ra; self.r[29] = sp
         for i, v in enumerate(args[:4]): self.r[4 + i] = v & M64 if v >= 0 else (v & M64)
         for i, v in enumerate(args[4:8]): self.r[8 + i] = v & M64            # n32/eabi64 style a4-a7
@@ -174,6 +209,9 @@ class CPU:
             if rt: r[rt] = v & M64; self.u[rt] = v >> 64
         elif op == 31:   # sq
             a = (A + simm) & M32 & ~15; m.put(a, 16, B | (self.u[rt] << 64))
+        elif op == 0x31: self.fpr[rt] = m.u(A + simm & M32, 4)                                   # lwc1
+        elif op == 0x39: m.put(A + simm & M32, 4, self.fpr[rt])                                 # swc1
+        elif op == 0x11: self.cop1(w, pc, rs, rt, rd, sa, simm)
         elif op == 0x1C:
             f = w & 63; key = (f, sa)
             if key not in MMI_OK: raise Unsupported("mmi %x/%x @%x" % (f, sa, pc))
@@ -188,3 +226,46 @@ class CPU:
             else: z = join([(a_ - b_) & M32 for a_, b_ in zip(lanes(X, 32), lanes(Y, 32))], 32)                       # psubw
             if rd: r[rd] = z & M64; self.u[rd] = z >> 64
         else: raise Unsupported("op %d @%x" % (op, pc))
+
+    def cop1(self, w, pc, fmt, rt, fs, fd, simm):
+        r = self.r; F = self.fpr; ft = rt
+        if fmt == 0:                                                                               # mfc1
+            if rt: r[rt] = sx(F[fs])
+            return
+        if fmt == 4: F[fs] = r[rt] & M32; return                                                   # mtc1
+        if fmt == 2:                                                                               # cfc1
+            if rt: r[rt] = (self.fcr31 | ((1 << 23) if self.fcond else 0)) & M32
+            return
+        if fmt == 6: self.fcr31 = r[rt] & M32; self.fcond = bool(self.fcr31 & (1 << 23)); return    # ctc1
+        if fmt == 8:                                                                               # bc1f / bc1t / bc1fl / bc1tl
+            t = pc + 4 + (simm << 2); c = self.fcond if (rt & 1) else not self.fcond
+            self.br = (t, c, bool(rt & 2)); return
+        f = w & 63
+        if fmt == 20 and f == 32: F[fd] = q2f(Fraction(s32(F[fs]))); return                       # cvt.s.w
+        if fmt != 16: raise Unsupported("cop1 fmt %d @%x" % (fmt, pc))
+        a = f2q(F[fs]); b = f2q(F[ft])
+        if f == 0: F[fd] = q2f(a + b)
+        elif f == 1: F[fd] = q2f(a - b)
+        elif f == 2: F[fd] = q2f(a * b)
+        elif f == 3: F[fd] = q2f(a / b) if b != 0 else (0x7FFFFFFF if (F[fs] ^ F[ft]) >> 31 == 0 else 0xFFFFFFFF)
+        elif f == 4:                                                                               # sqrt.s fd, ft
+            import math
+            if b <= 0: F[fd] = 0
+            else:
+                sh = 200; F[fd] = q2f(Fraction(math.isqrt(b.numerator * b.denominator * (1 << (2 * sh))), b.denominator * (1 << sh)))
+        elif f == 5: F[fd] = F[fs] & 0x7FFFFFFF
+        elif f == 6: F[fd] = F[fs]
+        elif f == 7: F[fd] = F[fs] ^ 0x80000000
+        elif f == 0x16:                                                                            # rsqrt.s fd, fs, ft
+            import math
+            if b <= 0 or a < 0: F[fd] = 0x7FFFFFFF
+            else: F[fd] = q2f(a / Fraction(math.isqrt(int(b * (1 << 400))), 1 << 200))
+        elif f == 0x24:                                                                            # cvt.w.s
+            v = int(a); F[fd] = (0x7FFFFFFF if v > 0x7FFFFFFF else 0x80000000 if v < -0x80000000 else v) & M32
+        elif f == 0x28: F[fd] = F[fs] if a >= b else F[ft]
+        elif f == 0x29: F[fd] = F[fs] if a <= b else F[ft]
+        elif f == 0x30: self.fcond = False
+        elif f == 0x32: self.fcond = a == b
+        elif f == 0x34: self.fcond = a < b
+        elif f == 0x36: self.fcond = a <= b
+        else: raise Unsupported("cop1 funct %x @%x" % (f, pc))
