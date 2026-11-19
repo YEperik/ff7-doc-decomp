@@ -35,7 +35,7 @@ address,name,callers,size,leaf,emulatable,section
 0x002e14e8,get_gvar_0046de04,75,16,1,1,.text
 0x002e14f8,FUN_002e14f8,74,56,0,0,.text
 0x00248fd0,FUN_00248fd0,71,236,0,0,.text
-0x003aa078,FUN_003aa078,71,32,1,0,.text
+0x003aa078,cstack_pop_float,71,32,1,1,.text
 0x00bd0008,FUN_00bd0008,71,104,0,0,.kel_net
 0x0053bd08,FUN_0053bd08,70,80,0,0,.kel_extended_program_section
 0x00444f30,FUN_00444f30,68,40,1,0,.text
@@ -54,13 +54,13 @@ address,name,callers,size,leaf,emulatable,section
 0x00444e70,FUN_00444e70,57,24,1,0,.text
 0x003260a8,FUN_003260a8,57,40,0,0,.text
 0x003db060,FUN_003db060,57,32,0,0,.text
-0x002585d0,FUN_002585d0,55,80,0,0,.text
+0x002585d0,FUN_002585d0,55,72,0,0,.text
 0x00371ab0,FUN_00371ab0,54,144,0,0,.text
 0x00371b40,FUN_00371b40,54,128,0,0,.text
 0x003db010,FUN_003db010,54,40,0,0,.text
 0x003e1f80,FUN_003e1f80,54,16,1,1,.text
 0x0053e240,FUN_0053e240,53,40,1,1,.kel_extended_program_section
-0x002490c8,FUN_002490c8,52,20,1,1,.text
+0x002490c8,FUN_002490c8,52,8,1,1,.text
 0x0037a640,FUN_0037a640,52,72,1,1,.text
 0x002521a8,FUN_002521a8,51,72,0,0,.text
 0x0040b7c0,FUN_0040b7c0,51,48,0,0,.text
@@ -80,7 +80,7 @@ address,name,callers,size,leaf,emulatable,section
 0x00444ec8,FUN_00444ec8,46,104,1,0,.text
 0x00286670,FUN_00286670,46,64,0,0,.text
 0x002866b0,FUN_002866b0,46,256,0,0,.text
-0x003aa098,FUN_003aa098,46,40,1,0,.text
+0x003aa098,cstack_push_float,46,40,1,1,.text
 0x003ef028,get_gvar_0047dadc,46,16,1,1,.text
 0x0024fec8,FUN_0024fec8,45,104,0,0,.text
 0x002f30a8,FUN_002f30a8,45,464,0,0,.text
@@ -287,7 +287,7 @@ address,name,callers,size,leaf,emulatable,section
 0x003b7968,FUN_003b7968,15,192,0,0,.text
 0x003dce58,get_gvar_004f3234,15,16,1,1,.text
 0x0053fc08,FUN_0053fc08,15,288,0,0,.kel_extended_program_section
-0x005493d0,FUN_005493d0,15,144,1,0,.kel_extended_program_section
+0x005493d0,FUN_005493d0,15,144,1,1,.kel_extended_program_section
 0x005a89a0,FUN_005a89a0,15,176,0,0,.kel_draw_section
 0x00423060,FUN_00423060,14,768,1,1,.text
 0x0041c3d8,FUN_0041c3d8,14,112,0,0,.text
