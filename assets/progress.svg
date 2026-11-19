@@ -5,26 +5,26 @@
 <text class="m" x="736" y="34" font-size="12" text-anchor="end">C reconstructions tested against the original</text>
 <text class="t" x="24" y="76" font-size="13">Functions</text>
 <rect class="tr" x="160" y="62" width="360" height="18" rx="4" fill="#262838"/>
-<rect x="160" y="62" width="2.0" height="18" rx="4" fill="#e05d44"/>
-<text class="t" x="532" y="76" font-size="13" font-weight="bold">0.39%</text>
-<text class="m" x="606" y="76" font-size="11">51 / 12932</text>
+<rect x="160" y="62" width="3.9" height="18" rx="4" fill="#e05d44"/>
+<text class="t" x="532" y="76" font-size="13" font-weight="bold">1.07%</text>
+<text class="m" x="606" y="76" font-size="11">139 / 12940</text>
 <text class="t" x="24" y="110" font-size="13">Code bytes</text>
 <rect class="tr" x="160" y="96" width="360" height="18" rx="4" fill="#262838"/>
 <rect x="160" y="96" width="2.0" height="18" rx="4" fill="#e05d44"/>
-<text class="t" x="532" y="110" font-size="13" font-weight="bold">0.12%</text>
-<text class="m" x="606" y="110" font-size="11">5,320 / 4,390,020</text>
+<text class="t" x="532" y="110" font-size="13" font-weight="bold">0.21%</text>
+<text class="m" x="606" y="110" font-size="11">9,412 / 4,390,020</text>
 <text class="t" x="24" y="144" font-size="13">Byte-exact</text>
 <rect class="tr" x="160" y="130" width="360" height="18" rx="4" fill="#262838"/>
 <rect x="160" y="130" width="2.0" height="18" rx="4" fill="#e05d44"/>
-<text class="t" x="532" y="144" font-size="13" font-weight="bold">0.01%</text>
-<text class="m" x="606" y="144" font-size="11">18 functions</text>
+<text class="t" x="532" y="144" font-size="13" font-weight="bold">0.02%</text>
+<text class="m" x="606" y="144" font-size="11">41 functions</text>
 <text class="t" x="24" y="178" font-size="13">Top-300 hubs</text>
 <rect class="tr" x="160" y="164" width="360" height="18" rx="4" fill="#262838"/>
-<rect x="160" y="164" width="43.2" height="18" rx="4" fill="#dfb317"/>
-<text class="t" x="532" y="178" font-size="13" font-weight="bold">12.00%</text>
-<text class="m" x="606" y="178" font-size="11">36 / 300</text>
+<rect x="160" y="164" width="140.4" height="18" rx="4" fill="#dfb317"/>
+<text class="t" x="532" y="178" font-size="13" font-weight="bold">39.00%</text>
+<text class="m" x="606" y="178" font-size="11">117 / 300</text>
 <text class="t" x="24" y="212" font-size="13">Hub call sites</text>
 <rect class="tr" x="160" y="198" width="360" height="18" rx="4" fill="#262838"/>
-<rect x="160" y="198" width="135.7" height="18" rx="4" fill="#dfb317"/>
-<text class="t" x="532" y="212" font-size="13" font-weight="bold">37.69%</text>
-<text class="m" x="606" y="212" font-size="11">5,033 / 13,352</text></svg>
+<rect x="160" y="198" width="219.8" height="18" rx="4" fill="#97ca00"/>
+<text class="t" x="532" y="212" font-size="13" font-weight="bold">61.05%</text>
+<text class="m" x="606" y="212" font-size="11">8,151 / 13,352</text></svg>
