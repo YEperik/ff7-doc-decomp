@@ -5,7 +5,7 @@ Usage: python tests/game_test.py game/SLPM_666.29"""
 import ctypes, glob, mmap, os, re, random, struct, subprocess, sys, tempfile
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."); sys.path.insert(0, ROOT)
 from ps2an.elf import Elf; from ps2an import analyze as A
-from ps2an.emu import CPU, Mem, Unsupported, M32
+from ps2an.emu import CPU, Mem, Unsupported, M32, M64, M64
 
 libc = ctypes.CDLL(None, use_errno=True)
 libc.mmap.restype = ctypes.c_void_p
@@ -23,7 +23,9 @@ class SnapMem(Mem):
             if x in self.b: out.append(self.b[x]); continue
             for ra, data in self.snaps:
                 if ra <= x < ra + len(data): out.append(data[x - ra]); break
-            else: raise KeyError(hex(x))
+            else:
+                if x >= 0x7E000000: out.append(0)                  # stack memory that was never written (SIMD reads past a terminator)
+                else: raise KeyError(hex(x))
         return bytes(out)
     def final(self, ra, data):
         buf = bytearray(data)
@@ -113,20 +115,62 @@ def g_2e14f8(r, env): return [ri32(r), ri32(r), ri32(r), r.choice([1, 0, 2, -1, 
 CALLEES = {
  "DIntr": (0x0044cb68, 0, "", "bit"), "EIntr": (0x0044cbb0, 0, "", "bit"), "GetThreadId": (0x00451fd0, 0, "", "tid"),
  "SleepThread": (0x00452000, 0, "", None), "WakeupThread": (0x00452010, 1, "v", "zero"),
- "FUN_0042d398": (0x0042d398, 1, "v", None), "FUN_00248fd0": (0x00248fd0, 1, "v", None),
+ "FUN_0042d398": (0x0042d398, 1, "v", None), "FUN_00248fd0": (0x00248fd0, 1, "S", None),
  "RotateThreadReadyQueue": (0x00451f90, 1, "v", "rand"), "FUN_00251150": (0x00251150, 1, "v", None),
  "FUN_002510b8": (0x002510b8, 3, "vvv", "rand"), "FUN_0054a7e8": (0x0054a7e8, 2, "vo", None),
  "FUN_002f3278": (0x002f3278, 2, "vv", "rand"), "FUN_0030b6b0": (0x0030b6b0, 3, "vvv", "rand"),
+ "FUN_0040a288": (0x0040a288, 1, "v", "rand"), "FUN_0040b700": (0x0040b700, 0, "", "rand"), "FUN_0045b730": (0x0045b730, 0, "", "float"), "FUN_0045b628": (0x0045b628, 0, "", "float"),
+ "FUN_00261420": (0x00261420, 1, "v", None), "FUN_00445218": (0x00445218, 2, "vv", "rand"), "FUN_0040b278": (0x0040b278, 1, "v", "rand"), "FUN_00414c80": (0x00414c80, 2, "vv", "small"),
+ "FUN_003728e8": (0x003728e8, 4, "ovvF", "rand"), "FUN_004489d0": (0x004489d0, 3, "ovV", "rand"), "FUN_002e2f90": (0x002e2f90, 2, "vS", None), "FUN_005a9a60": (0x005a9a60, 1, "v", "rand"), "FUN_00344648": (0x00344648, 5, "vvvvv", "rand"),
+ "FUN_00371ab0": (0x00371ab0, 3, "vdv", None), "FUN_002501b0": (0x002501b0, 0, "", None), "FUN_00250048": (0x00250048, 1, "v", None),
+ "FUN_0036b650": (0x0036b650, 2, "vv", "rand"), "FUN_00251ed0": (0x00251ed0, 0, "", "rand"), "FUN_00251ef0": (0x00251ef0, 3, "vvv", "rand"),
+ "FUN_002f30a8": (0x002f30a8, 3, "vvv", "rand"),
  "break": (None, 0, "", None),
 }
+FRAME_FIRST = {"FUN_002a80b0"}                                       # its sprintf call provides one vararg: later slots hold stale register contents
+WRITERS = {"FUN_003728e8", "FUN_004489d0"}                          # mocks that write a short result string through their first argument
+FARITY = {"FUN_0045b730": 1, "FUN_0045b628": 1, "FUN_00445218": 2}      # float arguments (in $f12, $f13) that are part of the comparison
+NICE = [0.0, 1.0, -1.0, 0.5, 2.0, 3.25, -7.5, 100.0, 0.125, -0.75]
+def fbits(x): return struct.unpack("<I", struct.pack("<f", x))[0]
+class FArg(int): pass                                                  # a float argument given as its bit pattern
+
 class World:
     def __init__(self, seed, rd, wr, lockqs): self.rng = random.Random(seed); self.log = []; self.rd = rd; self.wr = wr; self.lockqs = lockqs
-    def call(self, name, args=()):
+    def u32(self, a): return struct.unpack("<I", self.rd(a, 4))[0]
+    def rdstr(self, a):
+        out = bytearray()
+        for i in range(0x100):
+            b = self.rd(a + i, 1)
+            if b == b"\0": break
+            out += b
+        return bytes(out)
+    def frame(self, p):
+        n, nf = self.u32(p), self.u32(p + 4)
+        if getattr(self, "frame_first", False): return (n, nf, self.u32(p + 0x28))
+        return (n, nf) + tuple(self.u32(p + 8 + 4 * k) for k in range(8)) + tuple(self.u32(p + 0x28 + 4 * k) for k in range(n))
+    def va(self, p):
+        return tuple(self.u32(p - 16 + 4 * k) for k in range(4)) + tuple(struct.unpack("<Q", self.rd(p + 8 * k, 8))[0] for k in range(5))
+
+    def call(self, name, args=(), fargs=()):
         _a, arity, kinds, ret = CALLEES[name]
-        self.log.append((name, tuple(x & M32 for x, k in zip(args[:arity], kinds) if k == "v")))
+        vals = []
+        for x, k in zip(args[:arity], kinds):
+            if k == "v":
+                x &= M32
+                if GV_OFF <= x < GV_OFF + 0x2000000: x -= GV_OFF                  # pointer to a global: undo the host mapping offset
+                vals.append(x)
+            elif k == "d": vals.append(struct.unpack("<I", self.rd(x, 4))[0])      # the dword the pointer argument refers to
+            elif k == "S": vals.append(self.rdstr(x))                              # text behind a pointer
+            elif k == "F": vals.append(self.frame(x))                              # register save area of a vararg wrapper
+            elif k == "V": vals.append(self.va(x))                                 # vararg area of the message formatter
+        vals += [x & M32 for x in fargs[:FARITY.get(name, 0)]]
+        self.log.append((name, tuple(vals)))
         if name == "FUN_0042d398":                                       # another thread drains every lock queue under test
             for q in self.lockqs: self.wr(q + 0x80, struct.pack("<H", (struct.unpack("<H", self.rd(q + 0x82, 2))[0] + 5) & 0x1F))
         if name == "FUN_0054a7e8": self.wr(args[1], self.rng.randbytes(0x40))      # fills the output buffer
+        if name in WRITERS: self.wr(args[0], self.rng.choice([b"12\0", b"-7\0", b"abc\0", b"\0", b"x\x80\0"]))
+        if ret == "float": return fbits(self.rng.choice(NICE))
+        if ret == "small": return self.rng.randint(-(1 << 20), 1 << 20)
         if ret == "bit": return self.rng.randint(0, 1)
         if ret == "tid": return struct.unpack("<i", self.rd(0x004b8cf8, 4))[0] if self.rng.random() < .5 else self.rng.randint(1, 60)
         if ret == "rand": return s32(self.rng.getrandbits(32))
@@ -173,10 +217,62 @@ def g_2694(r, env):
 def g_3d96(r, env): return [ARENA, r.choice([1, -1, 2, 3, -5, 100, -32768, 0x7fff, 65537, 0x1fff3, -7])]
 def g_mat(r, env): return [ARENA + 16 * r.randint(0, 100)]
 def g_lock8(r, env): setup_lock(r, env, ARENA + 8); return [ARENA]
+def g_cpyn(r, env):
+    src = bytes(r.choice(b"abc\x80\x00\x00") if i else r.choice(b"abc\x80\x00") for i in range(64)); env.write(ARENA + 0x1000, src)
+    return [ARENA + 0x3000, ARENA + 0x1000, r.choice([-3, 0, 1, 2, 5, 17, 40])]
+def g_37a6(r, env):
+    keys = [r.choice([0, r.getrandbits(32), r.randint(1, 9)]) for _ in range(64)]
+    for i, k in enumerate(keys): env.w32(ARENA + 0x1818 + i * 0x200, k)
+    return [ARENA, r.choice([0, s32(r.choice(keys)), s32(r.choice(keys)), s32(r.getrandbits(32)), 5])]
+def g_4541(r, env):
+    p = 0 if r.random() < .25 else ARENA + 0x1000; env.w32(ARENA, p)
+    if p: env.w32(ARENA + 4, r.choice([r.getrandbits(32), 0]) if r.random() < .3 else struct.unpack("<I", env.host(p + 24, 4))[0])
+    else: env.w32(ARENA + 4, r.getrandbits(32))
+    return [ARENA]
+def g_55bd(r, env): env.write(ARENA + 260, bytes([r.choice([0, 0x7f, 0x80, 0xbf, 0xc0, 0xff, r.randrange(256)])])); return [ARENA]
+def _bs(stride):
+    def g(r, env):
+        n = r.randint(0, 12); keys = sorted(r.getrandbits(32) if r.random() < .3 else r.randint(0, 40) for _ in range(n))
+        for i, k in enumerate(keys): env.w32(ARENA + 0x2000 + i * stride + 24, k)
+        lo, hi = (0, n - 1) if r.random() < .8 else (r.randint(-2, 6), r.randint(-2, 14))
+        key = r.choice(keys) if keys and r.random() < .6 else r.choice([0, 7, r.getrandbits(32)])
+        return [ri32(r), ARENA + 0x2000, lo, hi, s32(key)]
+    return g
+def g_3461(r, env): env.w32(ARENA + 1992, r.choice([0, r.getrandbits(32) | 1])); return [ARENA]
+def g_3457(r, env): env.w32(ARENA + 2044, ARENA + 0x2000); return [ARENA, r.randint(0, 20), ri32(r), ri32(r)]
+def g_371c(r, env): return [ri32(r) & M32, ARENA + 0x1000, ri32(r)]
+def g_ri(r, env): return [ri32(r)]
+def g_str(r, env):
+    n = r.randint(0, 20); env.write(ARENA + 0x1000, bytes(r.choice(b"abcxyz\x80\xff") for _ in range(n)) + b"\0\0\0\0\0\0\0\0\0"); return [ARENA + 0x1000]
+def g_371b(r, env):
+    pos = ARENA + 0x2000 + r.randint(0, 40); env.w32(ARENA + 4, r.choice([0, 0, 0, 1])); env.w32(ARENA + 12, r.choice([0, 0, 0, 1])); env.w32(ARENA + 8, r.choice([0, 0, 1]))
+    env.w32(ARENA + 24, pos); env.w32(ARENA + 28, pos + r.randint(0, 40))
+    return [ARENA, r.choice([0, ARENA + 0x4000 + r.randint(0, 8)]), r.randint(0, 40)]
+def g_2a80(r, env): env.w32(0x4ec258, ARENA + 0x6000); return [r.choice([0, 0, ri32(r), 5])]
+def g_bd00(r, env): setup_lock(r, env, ARENA + 0x44); env.w32(ARENA + 12, r.choice([2, 2, 0, 1, r.getrandbits(32)])); return [ARENA]
+def rfl(r): return fbits(r.choice(NICE + [r.uniform(-1e6, 1e6), r.uniform(-1, 1)]))
+def g_popf(r, env): c, sp = p_ctx(r, env); env.w32(sp + 4, rfl(r)); return [c]
+def g_pushf(r, env): c, _ = p_ctx(r, env); return [c, FArg(rfl(r))]
+def g_rot(r, env): return [ARENA + 16 * r.randint(0, 50), FArg(rfl(r))]
+def g_timer(r, env):
+    env.w32(0x46b28c, fbits(r.choice([1.0, 2.0, 0.5, 4.0, 0.25, 8.0, 16.0, 0.0, -1.0, -2.0]))); env.w32(0x46b290, r.randint(-(1 << 20), 1 << 20))
+    env.w32(0x46b294, r.choice([0, 5, r.getrandbits(32), 0xFFFFFF00, 0xFFFFFFFF, 0x7FFFFFFF])); return []
+def _path(r):
+    p = b"/".join(r.choice([b"a", b"dir", b"sub", b"file.c", b"x", b"lib"]) for _ in range(r.randint(0, 4)))
+    if r.random() < .3: p = b"/" + p
+    if r.random() < .2: p += b"/"
+    return p
+def _fl8(r): return [FArg(rfl(r)) for _ in range(8)]
+def g_f4c(r, env): return [ARENA + 0x1000, ARENA + 0x2000] + [ri32(r) for _ in range(6)] + _fl8(r)
+def g_ed8(r, env): return [ARENA + 0x1000, ri32(r), ARENA + 0x2000] + [ri32(r) for _ in range(5)] + _fl8(r)
+def g_2a80b0(r, env):
+    env.write(ARENA + 0x1000, _path(r) + b"\0"); env.write(ARENA + 0x2000, b"fmt\0"); env.write(0x46d63c, bytes([r.choice([0, 0, 1, 0x80])]))
+    for a in (0x49d258, 0x49d260, 0x49d268): env.write(a, bytes(r.choice(b"abc:() ") for _ in range(r.randint(0, 6))) + b"\0")
+    return [ARENA + 0x1000, ri32(r), ARENA + 0x2000] + [ri32(r) for _ in range(5)] + _fl8(r)
 def g_fpop(r, env): env.w32(ARENA + 24, r.choice([0, ARENA + 0x4100])); return [ARENA]
 def g_pushcell(r, env): c, _ = p_ctx(r, env); return [c, ARENA + 0x2000 + 8 * r.randint(0, 20)]
 
-GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000, 0x4df000, 0x46f000, 0x4ec000, 0x46e000, 0x4f5000, 0x47d000, 0x503000, 0x4f3000, 0x487000, 0x4b2000, 0x4e4000, 0x50d000]
+GLOBAL_PAGES = [0x4ef000, 0x46d000, 0x4b8000, 0x46b000, 0x4df000, 0x46f000, 0x4ec000, 0x46e000, 0x4f5000, 0x47d000, 0x503000, 0x4f3000, 0x487000, 0x4b2000, 0x4e4000, 0x50d000, 0x4bc000, 0x4b1000, 0x49d000, 0x4a9000]
 # name, guest address, argument generator, return kind ("s32" | "ptr" | "void")
 SPECS = [
  ("cstack_pop", 0x003aa140, g_pop, "s32"), ("cstack_push_int", 0x003aa0c0, g_push, "void"), ("cstack_drop", 0x003aa108, g_drop, "void"),
@@ -214,6 +310,17 @@ SPECS = [
  ("FUN_00240f28", 0x00240f28, g_none, "s32"), ("FUN_002694e8", 0x002694e8, g_2694, "gptr"), ("FUN_003d96d0", 0x003d96d0, g_3d96, "void"),
  ("FUN_002d84d0", 0x002d84d0, g_mat, "void"), ("FUN_003f1b68", 0x003f1b68, g_obj0, "s32"),
  ("FUN_0041f358", 0x0041f358, g_lock8, "void"), ("FUN_0041f360", 0x0041f360, g_lock8, "void"),
+ ("FUN_00422f18", 0x00422f18, g_cpyn, "s32"), ("FUN_0037a640", 0x0037a640, g_37a6, "s32"), ("FUN_00454110", 0x00454110, g_4541, "s32"),
+ ("FUN_0055bd40", 0x0055bd40, g_55bd, "s32"), ("FUN_00bd7f38", 0x00bd7f38, _bs(0x40), "s32"), ("FUN_00bd81a8", 0x00bd81a8, _bs(0x50), "s32"),
+ ("FUN_002490bc", 0x002490bc, g_none, "s32"), ("FUN_002490c8", 0x002490c8, g_s32, "s32"), ("FUN_002490d0", 0x002490d0, g_s32, "s32"),
+ ("FUN_00346118", 0x00346118, g_3461, "s32"), ("FUN_00345700", 0x00345700, g_3457, "s32"), ("FUN_00371cf0", 0x00371cf0, g_371c, "void"),
+ ("FUN_002500d8", 0x002500d8, g_ri, "void"), ("FUN_003260a8", 0x003260a8, g_ri, "s32"), ("FUN_003db060", 0x003db060, g_none, "s32"), ("FUN_003db010", 0x003db010, g_ri, "s32"),
+ ("FUN_002585d0", 0x002585d0, g_str, "s64"), ("FUN_00371b40", 0x00371b40, g_371b, "void"), ("FUN_002a8010", 0x002a8010, g_2a80, "s32"),
+ ("FUN_00286670", 0x00286670, g_obj0, "s32"), ("FUN_00bd0008", 0x00bd0008, g_bd00, "s32"),
+ ("FUN_00258618", 0x00258618, g_none, "s32"),
+ ("cstack_pop_float", 0x003aa078, g_popf, "f32"), ("cstack_push_float", 0x003aa098, g_pushf, "void"), ("FUN_0040b7c0", 0x0040b7c0, g_none, "f32"),
+ ("FUN_002599d0", 0x002599d0, g_rot, "void"), ("FUN_00284fc8", 0x00284fc8, g_ri, "s32"), ("FUN_0023c1f0", 0x0023c1f0, g_timer, "void"),
+ ("FUN_00248f4c", 0x00248f4c, g_f4c, "s32"), ("FUN_00248ed8", 0x00248ed8, g_ed8, "s32"), ("FUN_002a80b0", 0x002a80b0, g_2a80b0, "void"),
  ("FUN_0033ab18", 0x0033ab18, g_obj0, "s32"), ("FUN_0036f7b8", 0x0036f7b8, g_f24, "s32"), ("FUN_0036f7c8", 0x0036f7c8, g_f24, "s32"),
 ]
 
@@ -227,11 +334,15 @@ def build():
     subprocess.run(["gcc", "-O2", "-shared", "-fPIC", "-fno-builtin", "-fno-strict-aliasing", "-fwrapv", "-w", "-DGV_BASE=%dUL" % GV_OFF, "-DHOST_TEST", "-I", os.path.join(ROOT, "src/include"), "-o", so, *srcs], check=True)
     return ctypes.CDLL(so)
 
+def host_read(env, a, n):
+    try: return env.host(a, n)
+    except KeyError: return ctypes.string_at(a, n)                 # a real host pointer (e.g. a local of the C code)
+
 def host_write(env, a, d):
     try: env.write(a, d)
     except KeyError: ctypes.memmove(a, bytes(d), len(d))       # a real host pointer (e.g. a local buffer of the C code)
 
-CBTYPE = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64)
+CBTYPE = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64)
 
 def main(elf_path, trials=500):
     check_manifest(); elf = Elf(elf_path); table = A.func_table(elf, A.find_functions(elf, A.load_overrides(os.path.join(ROOT, "symbols/overrides.txt"))))
@@ -239,25 +350,36 @@ def main(elf_path, trials=500):
     env = Env(); env.region(ARENA, ARENA_SZ)
     for pg in GLOBAL_PAGES: env.region(pg, 0x1000, GV_OFF)
     cur = {}; reconstructed = {n for n, _a, _g, _r in SPECS}
-    cb = CBTYPE(lambda n, a0, a1, a2, a3: cur["w"].call(n.decode(), (a0, a1, a2, a3))); lib.shim_set_cb(cb)
+    cb = CBTYPE(lambda n, a0, a1, a2, a3, a4, f0, f1: cur["w"].call(n.decode(), (a0, a1, a2, a3, a4), (f0, f1))); lib.shim_set_cb(cb)
     only = set(filter(None, os.environ.get("ONLY", "").split(",")))          # e.g. ONLY=FUN_002e14f8,FUN_003761e8
     for name, addr, gen, rk in SPECS:
         if only and name not in only: continue
-        f = getattr(lib, name); f.restype = ctypes.c_int64 if rk != "ptr" else ctypes.c_void_p
+        f = getattr(lib, name); f.restype = ctypes.c_float if rk == "f32" else (ctypes.c_int64 if rk != "ptr" else ctypes.c_void_p)
         rng = random.Random(addr); ok = 0; seen = set(); calls = 0
         for t in range(trials):
             LOCKQS.clear(); env.randomize(rng); args = gen(rng, env)
             snaps = [(a_, env.host(a_, n)) for a_, n in env.regions]
-            f.argtypes = [ctypes.c_int64 if a_ < 0 else ctypes.c_uint64 for a_ in args]
-            hw = World(t, lambda a_, n: env.host(a_, n), lambda a_, d: host_write(env, a_, d), list(LOCKQS)); cur["w"] = hw
-            cr = f(*args); cr = (cr or 0) & M32 if rk != "void" else 0
+            f.argtypes = [ctypes.c_float if isinstance(a_, FArg) else (ctypes.c_int64 if a_ < 0 else ctypes.c_uint64) for a_ in args]
+            hargs = [struct.unpack("<f", struct.pack("<I", int(a_)))[0] if isinstance(a_, FArg) else a_ for a_ in args]
+            iargs = [a_ for a_ in args if not isinstance(a_, FArg)]; fargs = [int(a_) for a_ in args if isinstance(a_, FArg)]
+            hw = World(t, lambda a_, n: host_read(env, a_, n), lambda a_, d: host_write(env, a_, d), list(LOCKQS)); hw.frame_first = name in FRAME_FIRST; cur["w"] = hw
+            cr = f(*hargs)
+            cr = fbits(cr) if rk == "f32" else (cr or 0) & (M64 if rk == "s64" else M32) if rk != "void" else 0
             if rk == "gptr" and cr: cr = (cr - GV_OFF) & M32                     # pointer into a global object: host address carries the mapping offset
             mem = SnapMem(snaps); cpu = CPU(fetch, mem)
-            ew = World(t, lambda a_, n: mem.rd(a_, n), lambda a_, d: mem.wr(a_, d), list(LOCKQS))
+            ew = World(t, lambda a_, n: mem.rd(a_, n), lambda a_, d: mem.wr(a_, d), list(LOCKQS)); ew.frame_first = name in FRAME_FIRST
+            def mk(n):
+                def hook(c):
+                    v = ew.call(n, (c.r[4], c.r[5], c.r[6], c.r[7], c.r[8]), (c.fpr[12], c.fpr[13]))
+                    if CALLEES[n][3] == "float": c.fpr[0] = v & M32
+                    else: c.r[2] = v & 0xFFFFFFFFFFFFFFFF
+                return hook
             for cn, (ga, _ar, _k, _rt) in CALLEES.items():                   # callees that are not reconstructed run as mocks
-                if ga is not None and cn not in reconstructed: cpu.hooks[ga] = (lambda c, n=cn: c.r.__setitem__(2, ew.call(n, (c.r[4], c.r[5], c.r[6], c.r[7])) & 0xFFFFFFFFFFFFFFFF))
+                if ga is not None and cn not in reconstructed: cpu.hooks[ga] = mk(cn)
             cpu.on_break = lambda c: ew.call("break")
-            try: orv = cpu.run(addr, [x & 0xFFFFFFFFFFFFFFFF for x in args], limit=40000) & M32
+            try:
+                orv = cpu.run(addr, [x & 0xFFFFFFFFFFFFFFFF for x in iargs], limit=200000, fargs=fargs) & (M64 if rk == "s64" else M32)
+                if rk == "f32": orv = cpu.fpr[0]
             except (Unsupported, KeyError) as ex: print("ERR", name, ex); bad += 1; break
             orv = orv if rk != "void" else 0
             seen |= cpu.seen; calls += len(hw.log)
