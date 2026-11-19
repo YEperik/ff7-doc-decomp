@@ -1,0 +1,31 @@
+name: progress-report
+
+# Publishes the progress report that ByteMatch (bytematch.dev) reads.
+# Kept separate from check.yml on purpose: ByteMatch only reads SUCCESSFUL runs on the
+# default branch, so a failing hygiene check must not block the report.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VERSION: SLPM_666.29   # artifact is named <VERSION>_report
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Generate objdiff-format report (public metadata only, no game files)
+        run: python3 tools/bytematch_report.py -o build/bytematch
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.VERSION }}_report
+          path: build/bytematch/        # report.json + functional.json
+          if-no-files-found: error
