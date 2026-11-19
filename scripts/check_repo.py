@@ -7,12 +7,7 @@ LONGSTR = re.compile(r'"[^"\n]{40,}"')
 def text_problem(txt, ext):
     """Instruction listings and long string literals are signs of copied game material."""
     if ext == ".py": return None                      # tool sources may contain format strings and docs
-    # Performance optimization:
-    # LISTING regex branches each require specific substrings ('.word', '/*', or ':').
-    # A fast substring pre-filter skips regex evaluation for large files lacking them
-    # (e.g. reports/jal_candidates.csv, symbols/functions.csv), speeding up scans ~10x.
-    if ('.word' in txt or '/*' in txt or ':' in txt) and LISTING.search(txt):
-        return "looks like a disassembly listing"
+    if LISTING.search(txt): return "looks like a disassembly listing"
     if ext in (".c", ".h") and LONGSTR.search(txt): return "long string literal (game text?)"
     return None
 SKIP = {".git", "__pycache__"}
@@ -24,7 +19,7 @@ def check(root):
             p = os.path.join(d, n); ext = os.path.splitext(n)[1].lower()
             rel = os.path.relpath(p, root)
             if ext in BAD_EXT or n.upper().startswith(("SLPM_", "SLUS_", "SCES_")): bad.append((rel, "forbidden type"))
-            elif os.path.getsize(p) > 5_000_000: bad.append((rel, "file > 5 MB"))
+            elif os.path.getsize(p) > 2_000_000: bad.append((rel, "file > 2 MB"))
             else:
                 with open(p, "rb") as fh: magic = fh.read(4)
                 if magic in (b"\x7fELF", b"PK\x03\x04"): bad.append((rel, "binary magic"))
