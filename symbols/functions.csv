@@ -341,7 +341,8 @@ address,size,section,name
 0x00248fd0,236,.text,FUN_00248fd0
 0x002490bc,8,.text,FUN_002490bc
 0x002490c4,4,.text,FUN_002490c4
-0x002490c8,20,.text,FUN_002490c8
+0x002490c8,8,.text,FUN_002490c8
+0x002490d0,12,.text,FUN_002490d0
 0x002490dc,148,.text,FUN_002490dc
 0x00249170,12,.text,FUN_00249170
 0x0024917c,12,.text,FUN_0024917c
@@ -699,7 +700,8 @@ address,size,section,name
 0x00258550,64,.text,FUN_00258550
 0x00258590,32,.text,FUN_00258590
 0x002585b0,32,.text,FUN_002585b0
-0x002585d0,80,.text,FUN_002585d0
+0x002585d0,72,.text,FUN_002585d0
+0x00258618,8,.text,FUN_00258618
 0x00258620,512,.text,FUN_00258620
 0x00258820,232,.text,FUN_00258820
 0x00258908,512,.text,FUN_00258908
@@ -6186,8 +6188,8 @@ address,size,section,name
 0x003a9f88,72,.text,FUN_003a9f88
 0x003a9fd0,80,.text,FUN_003a9fd0
 0x003aa020,88,.text,FUN_003aa020
-0x003aa078,32,.text,FUN_003aa078
-0x003aa098,40,.text,FUN_003aa098
+0x003aa078,32,.text,cstack_pop_float
+0x003aa098,40,.text,cstack_push_float
 0x003aa0c0,40,.text,cstack_push_int
 0x003aa0e8,32,.text,cstack_push_cell
 0x003aa108,56,.text,cstack_drop
@@ -9288,7 +9290,7 @@ address,size,section,name
 0x00447e30,192,.text,memset
 0x00447ef0,88,.text,setjmp
 0x00447f48,100,.text,longjmp
-0x00447fac,308,.text,FUN_00447fac
+0x00447fac,308,.text,strcat
 0x004480e0,420,.text,strchr
 0x00448284,332,.text,strcmp
 0x004483d0,284,.text,strcpy
