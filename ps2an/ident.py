@@ -120,8 +120,10 @@ def supported(w, pc):
     op = w >> 26
     if op == 0x1C: return ((w & 63), (w >> 6) & 31) in MMI_OK
     if op in (30, 31): return True
+    from .emu import fpu_supported
+    if op in (0x11, 0x31, 0x39): return fpu_supported(w)
     t = decode(w, pc)
-    return not (t.startswith(".word") or t.split()[0] in ("lwc1", "swc1", "lqc2", "sqc2", "mfc1", "mtc1", "mfc0", "mtc0", "mfsa", "mtsa"))
+    return not (t.startswith(".word") or t.split()[0] in ("lqc2", "sqc2", "mfc0", "mtc0", "mfsa", "mtsa"))
 
 MIN_COVERAGE = 0.90
 def identify(elf, table, max_size=0x600):
