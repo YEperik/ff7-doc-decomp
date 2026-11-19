@@ -50,6 +50,9 @@ INCLUDE_ASM("text", setjmp);
 /* 0x00447f48 */
 INCLUDE_ASM("text", longjmp);
 
+/* 0x00447fac */
+INCLUDE_ASM("text", strcat);
+
 /* 0x004480e0 */
 INCLUDE_ASM("text", strchr);
 
