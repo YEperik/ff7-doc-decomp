@@ -16,3 +16,6 @@ FUN_0033ab18 = 0x0033ab18; // boundary only: initialiser after the getter at 0x3
 FUN_0036f7b8 = 0x0036f7b8; // boundary only: free-list getter
 FUN_0036f7c8 = 0x0036f7c8; // boundary only: free-list getter
 FUN_00315790 = 0x00315790; // boundary only: empty function (`jr ra`) after 0x315778
+FUN_002490d0 = 0x002490d0; // boundary only: second thunk to 0x40a288
+FUN_00258618 = 0x00258618; // boundary only: stub that returns 0
+strcat = 0x00447fac; // behaves as strcat on 600 random inputs with full coverage (tests/diff_test.py); calls strlen and strcpy
