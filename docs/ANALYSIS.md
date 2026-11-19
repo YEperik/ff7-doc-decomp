@@ -22,12 +22,16 @@ The `.kel_*` sections are code overlays: several share the `0x00528780` and `0x0
 
 ## Findings
 
-- **12,938 functions** found (jal targets, prologue-after-return, 61 exact syscall-wrapper patterns, and 14 manual boundaries).
-- **114 functions named**, each with an evidence tag in `symbols/named.txt` (`syscall`, `sdk-string`, `behavior-verified`, `thunk`, `manual`, `decomp-verified`).
-- **93 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`. Live numbers: [PROGRESS.md](PROGRESS.md).
+- **12,940 functions** found (jal targets, prologue-after-return, 61 exact syscall-wrapper patterns, and 16 manual boundaries).
+- **117 functions named**, each with an evidence tag in `symbols/named.txt` (`syscall`, `sdk-string`, `behavior-verified`, `thunk`, `manual`, `decomp-verified`).
+- **124 functions reconstructed in C** (`src/game/`), plus the 12 libc functions in `src/libc/`. Live numbers: [PROGRESS.md](PROGRESS.md).
 - **SDK libraries present:** libgs, libpad, libmc, libcdvd, libsif, libscf, libdma, libat3dec.
 - **2 embedded IOP modules** (ELF type `0xff80`) inside the executable.
 - **Runtime-loaded modules** (`polmem0:*.erx`) and data-file path formats exist in `.rodata`.
+
+## Emulator coverage
+
+The built-in emulator runs the integer core, 128-bit loads and stores with the MMI subset used by libc, and single-precision floating point with R5900 semantics (results truncated toward zero, no denormals, overflow clamps). Floating point tests use inputs whose results are exact, so the host and the original agree bit for bit. Callees that are not reconstructed are replaced by identical deterministic mocks on both sides; their arguments are compared, including text behind a pointer and the register save area of vararg calls.
 
 ## libc cluster
 
@@ -77,6 +81,10 @@ C reconstructions in `src/game/`. `tests/game_test.py` maps guest memory at iden
 | `FUN_0054a920` `FUN_005a3a48` `FUN_005a39e8` `FUN_002a8060` `FUN_002e14f8` `FUN_00326540` | | small non-leaf wrappers | |
 | ~30 accessors and flag setters | | global variables, bit flags in globals and objects, byte/halfword fields | |
 | table and list lookups | | tables behind global pointers, a 3-entry record table, a signed-nibble index, a free list (`FUN_0036f770` `FUN_0036f798`) | |
+| string copy, linear and binary searches | | bounded string copy, a 64-entry key search, two binary searches over 64- and 80-byte records (overlay code), a UTF-8 continuation test | |
+| floating point and time | | a scaled time counter (`0x23c1f0`), a random float in [0,1), a rotation matrix, float cells on the stack; arguments in `$f12..`, results in `$f0` |  |
+| message formatter and vararg wrappers | | `0x2a80b0` builds `<last two path components> (line N) <message>`, prints it at level 3 and stops if a flag is set; `0x248f4c` and `0x248ed8` save the argument registers in a vararg frame; `0x447fac` is `strcat` | 303, 47, 27 |
+| call wrappers (second batch) | | wrappers that forward to other routines, some with a local buffer or the caller's return address as an argument; the callee's arguments are compared, including the dword behind a pointer argument | |
 | `lock_acquire_005035a8` `FUN_0041f358` and release pairs | | more locks: a global at `0x5035a8` and per-object at `+8` | |
 | `FUN_0055a570` `FUN_00316d38` `FUN_002535e0` | | field getter, zero test, `x < 0 ? x : x >> 16` | |
 
@@ -100,7 +108,7 @@ Global accesses use `GV(type, address)` placeholders until `.data`/`.bss` are sp
 - stores form the address before the value, the constant 0 comes from `$zero`, and a returned parameter is copied into `$v0` at function entry;
 - a call that ends a void function becomes a sibling call (`j`, no frame) unless the file is marked `/* cc: nosibcall */` (the allocator module is compiled that way).
 
-`make match` compiles every reconstructed function and compares the instructions with the original. 39 functions are byte-exact so far (`src/game/matched.txt`); the rest report what the compiler still lacks (branches, loops, values kept across calls). The assembler behind it is validated by `tests/asm_test.py` (disassemble then assemble reproduces 99.5% of the entry code of every detected function; the remainder is data misread as code).
+`make match` compiles every reconstructed function and compares the instructions with the original. 41 functions are byte-exact so far (`src/game/matched.txt`); the rest report what the compiler still lacks (branches, loops, values kept across calls). The assembler behind it is validated by `tests/asm_test.py` (disassemble then assemble reproduces 99.5% of the entry code of every detected function; the remainder is data misread as code).
 
 ## Tool accuracy
 
