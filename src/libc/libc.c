@@ -31,6 +31,7 @@ int    strncmp(const char *x, const char *y, size_t n) {
     for (; n; n--, a++, b++) { if (*a != *b) return *a < *b ? -1 : 1; if (!*a) break; }
     return 0;
 }
+char  *strcat(char *d, const char *s)               { char *r = d; while (*d) d++; while ((*d++ = *s++)) ; return r; }
 char  *strcpy(char *d, const char *s)               { char *r = d; while ((*d++ = *s++)) ; return r; }
 char  *strncpy(char *d, const char *s, size_t n)    { size_t i = 0; for (; i < n && s[i]; i++) d[i] = s[i]; for (; i < n; i++) d[i] = 0; return d; }
 void   bzero(void *d, size_t n)                     { u8 *a = d; while (n--) *a++ = 0; }
