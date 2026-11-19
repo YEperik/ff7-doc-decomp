@@ -18,9 +18,9 @@ def sgn(x): return (x > 0) - (x < 0)
 # name -> (arg kinds, result kind). kinds: p = pointer into arena (offset), s = size, c = char/int, "str" arenas hold NUL-terminated data.
 SIG = {"strlen": ("p", "n"), "memchr": ("pcs", "p"), "memcpy": ("pps", "p"), "memmove": ("pps", "p"), "memset": ("pcs", "p"),
        "memcmp": ("pps", "sign"), "strchr": ("pc", "p"), "strcmp": ("pp", "sign"), "strncmp": ("pps", "sign"),
-       "strcpy": ("pp", "p"), "strncpy": ("pps", "p"), "bzero": ("ps", "none")}
+       "strcpy": ("pp", "p"), "strcat": ("pp", "p"), "strncpy": ("pps", "p"), "bzero": ("ps", "none")}
 
-STRFN = {"strlen", "strchr", "strcmp", "strncmp", "strcpy", "strncpy"}
+STRFN = {"strlen", "strchr", "strcmp", "strncmp", "strcpy", "strncpy", "strcat"}
 def trial(name, rng):
     """Random arena. Reads come from region A (0..159) / B (200..359); writes go to 300+ (or overlap inside A for memmove)."""
     alpha = rng.choice([b"abc", b"\x80\xff\x90", b"abc\x80\xffz"])
@@ -30,7 +30,7 @@ def trial(name, rng):
     for k in kinds:
         if k == "p":
             if name == "memmove": offs.append(al() + rng.choice([0, 0, 16, 32, 5]))
-            elif name in ("memcpy", "strcpy", "strncpy"): offs.append(300 + al() if pi == 0 else al())
+            elif name in ("memcpy", "strcpy", "strncpy", "strcat"): offs.append(300 + al() if pi == 0 else al())
             elif name in ("memset", "bzero"): offs.append(300 + al())
             else: offs.append(al() if pi == 0 else 200 + al())
             pi += 1
@@ -38,7 +38,7 @@ def trial(name, rng):
         else: offs.append(rng.randint(0, 12) if rng.random() < .4 else rng.randint(13, 120))
     if name in STRFN:                                    # terminate every read string somewhere ahead of its pointer
         reads = [offs[1]] if name in ("strcpy", "strncpy") else [offs[0]] + ([offs[1]] if len(offs) > 1 and kinds[1] == "p" else [])
-        for o in reads: arena[o + (rng.randint(0, 20) if rng.random() < .4 else rng.randint(21, 110))] = 0
+        for o in reads: arena[o + (rng.randint(0, 20) if rng.random() < .4 else rng.randint(21, 60 if name == "strcat" else 110))] = 0
         if name in ("strcmp", "strncmp") and rng.random() < .6:      # make the strings share a prefix
             n = rng.randint(1, 100); arena[offs[1]:offs[1] + n] = arena[offs[0]:offs[0] + n]
             if rng.random() < .5: arena[offs[1] + rng.randrange(n)] ^= 0x40
@@ -72,8 +72,11 @@ def run_orig(elf, addr, name, arena, kinds, offs):
 
 def main(elf_path, trials=400):
     elf = Elf(elf_path); t = A.func_table(elf, A.find_functions(elf)); ver, lik = ident.identify(elf, t)
+    manual = {}
+    for ad, nm in A.load_overrides(os.path.join(ROOT, "symbols/overrides.txt")).items():
+        if nm in SIG: manual.setdefault(nm, []).append(ad)
     lib = build(); rows = []; fail = 0
-    for conf, group in (("verified", ver), ("likely", lik)):
+    for conf, group in (("verified", ver), ("likely", lik), ("manual", manual)):
         for name, addrs in sorted(group.items()):
             if name not in SIG: continue
             for addr in addrs:
