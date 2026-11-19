@@ -31,3 +31,18 @@ void cstack_push_cell(CellCtx *c, const u64 *src) {
     c->sp = sp - sizeof(Cell);
     *PTR(u64, sp - sizeof(Cell)) = *src;
 }
+
+/* 0x003aa078: the cell value is a float */
+f32 cstack_pop_float(CellCtx *c) {
+    Cell *p = PTR(Cell, c->sp);
+    f32 v = *(f32 *)&p->value;
+    c->sp = P32(p + 1);
+    return v;
+}
+
+/* 0x003aa098 */
+void cstack_push_float(CellCtx *c, f32 v) {
+    c->sp -= sizeof(Cell);
+    PTR(Cell, c->sp)->type = 1;
+    *(f32 *)&PTR(Cell, c->sp)->value = v;
+}
