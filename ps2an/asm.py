@@ -1,13 +1,15 @@
 """Assembler for the instruction subset ps2an can disassemble (inverse of mips.decode)."""
 import re
 from . import mips
-from .mips import R, _SPECIAL, _IMM, _MEM, _BR, _RI, _MMI
+from .mips import R, _SPECIAL, _IMM, _MEM, _BR, _RI, _MMI, _FS, _FS3, _FS2
 
 REG = {n: i for i, n in enumerate(R)}
 _SP = {v: k for k, v in _SPECIAL.items()}; _IM = {v: k for k, v in _IMM.items()}; _ME = {v: k for k, v in _MEM.items()}
 _BRN = {v: k for k, v in _BR.items()}; _RIN = {v: k for k, v in _RI.items()}; _MM = {v: k for k, v in _MMI.items()}
 _MM["pcpyh"] = (0x29, 0x1B)
 
+_FSI = {v: k for k, v in _FS.items()}
+def _f(t): return int(t.strip().lstrip("$f"))
 def _r(t): return REG[t.strip().lstrip("$")]
 def _n(t): return int(t.strip(), 0)
 def _imm16(v): return v & 0xFFFF
@@ -18,6 +20,16 @@ def assemble(text, pc=0):
     if t == "nop": return 0
     m, _, rest = t.partition(" "); a = [x.strip() for x in rest.split(",")] if rest else []
     if m == ".word": return int(a[0], 0)
+    if m in ("mfc1", "mtc1"): return (0x11 << 26) | ((0 if m == "mfc1" else 4) << 21) | (_r(a[0]) << 16) | (_f(a[1]) << 11)
+    if m in ("cfc1", "ctc1"): return (0x11 << 26) | ((2 if m == "cfc1" else 6) << 21) | (_r(a[0]) << 16) | (_n(a[1].lstrip("$")) << 11)
+    if m in ("bc1f", "bc1t", "bc1fl", "bc1tl"): return (0x11 << 26) | (8 << 21) | (("bc1f", "bc1t", "bc1fl", "bc1tl").index(m) << 16) | _imm16((_n(a[0]) - (pc + 4)) >> 2)
+    if m == "cvt.s.w": return (0x11 << 26) | (20 << 21) | (_f(a[1]) << 11) | (_f(a[0]) << 6) | 32
+    if m in _FSI:
+        f = _FSI[m]; base = (0x11 << 26) | (16 << 21) | f
+        if m in _FS3: return base | (_f(a[2]) << 16) | (_f(a[1]) << 11) | (_f(a[0]) << 6)
+        if m in _FS2: return base | (_f(a[1]) << 11) | (_f(a[0]) << 6)
+        if m == "sqrt.s": return base | (_f(a[1]) << 16) | (_f(a[0]) << 6)
+        return base | (_f(a[1]) << 16) | (_f(a[0]) << 11)
     if m in _SP:
         f = _SP[m]
         if m in ("sll", "srl", "sra", "dsll", "dsrl", "dsra", "dsll32", "dsrl32", "dsra32"): return (_r(a[1]) << 16) | (_r(a[0]) << 11) | (_n(a[2]) << 6) | f
@@ -27,6 +39,7 @@ def assemble(text, pc=0):
         if m in ("mfhi", "mflo"): return (_r(a[0]) << 11) | f
         if m in ("mthi", "mtlo", "mtsa"): return (_r(a[0]) << 21) | f
         if m == "mfsa": return (_r(a[0]) << 11) | f
+        if m in ("mult", "multu") and len(a) == 3: return (_r(a[1]) << 21) | (_r(a[2]) << 16) | (_r(a[0]) << 11) | f
         if m in ("mult", "multu", "div", "divu"): return (_r(a[0]) << 21) | (_r(a[1]) << 16) | f
         if m in ("syscall", "break"): return (_n(a[0]) << 6 | f) if a else f
         if m == "sync": return f
@@ -49,7 +62,7 @@ def assemble(text, pc=0):
         return (0x1C << 26) | (_r(a[1]) << 21) | (_r(a[2]) << 16) | (_r(a[0]) << 11) | (sa << 6) | f
     raise ValueError("cannot assemble: " + text)
 
-_SKIP = ("mfc0", "mtc0", "mfc1", "mtc1", "lwc1", "swc1", "lqc2", "sqc2")
+_SKIP = ("mfc0", "mtc0", "lqc2", "sqc2")
 
 def roundtrip(elf, table, span=24):
     """Disassemble then assemble the first `span` words of every function that is certainly code
